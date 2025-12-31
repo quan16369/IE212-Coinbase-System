@@ -104,7 +104,8 @@ class TransformerTrainer:
         elif self.config['training']['optimizer'] == 'adam':
             return torch.optim.Adam(
                 self.model.parameters(),
-                lr=self.config['training']['lr']
+                lr=self.config['training']['lr'],
+                weight_decay=self.config['training'].get('weight_decay', 0.0)
             )
         else:
             raise ValueError(f"Unknown optimizer: {self.config['training']['optimizer']}")

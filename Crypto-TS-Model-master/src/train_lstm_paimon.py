@@ -58,7 +58,7 @@ class SimpleLSTMTrainer:
             pred_len=self.config['model']['pred_len']
         ).to(self.device)
         
-        logger.info(f"Initialized LSTM model")
+        logger.info("Initialized LSTM model")
         logger.info(f"Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
         
         # Simple optimizer
@@ -205,7 +205,7 @@ class SimpleLSTMTrainer:
         
         # Final evaluation on test set
         test_loss, test_metrics = self.validate(test_loader)
-        logger.info(f"\nFinal Test Results:")
+        logger.info("\nFinal Test Results:")
         logger.info(f"Test Loss: {test_loss:.6f}")
         logger.info(f"Test MAE: {test_metrics.get('mae', 0):.6f}")
         logger.info(f"Test RMSE: {test_metrics.get('rmse', 0):.6f}")
@@ -226,7 +226,7 @@ if __name__ == "__main__":
     metrics = trainer.train()
     
     print(f"\n{'='*60}")
-    print(f"Final test metrics:")
+    print("Final test metrics:")
     for key, value in metrics.items():
         print(f"  {key}: {value:.6f}")
     print(f"{'='*60}")

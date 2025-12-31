@@ -40,9 +40,11 @@ spec:
           requests:
             memory: "2Gi"
             cpu: "1000m"
+            ephemeral-storage: "2Gi"
           limits:
-            memory: "4Gi"
-            cpu: "2000m"
+            memory: "2Gi"
+            cpu: "1000m"
+            ephemeral-storage: "5Gi"
         ports:
         - containerPort: 8080
           name: http

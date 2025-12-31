@@ -128,7 +128,7 @@ class MLflowModelManager:
         
         if comparison.get("should_promote", False):
             print(f"✅ Model improvement detected: {comparison['improvement_mae']*100:.2f}%")
-            print(f"🚀 Promoting model to Production...")
+            print("🚀 Promoting model to Production...")
             
             version = self.register_model(run_id, stage="Production")
             
@@ -150,7 +150,7 @@ class MLflowModelManager:
             print(f"✅ Model version {version} promoted to Production")
             return True
         else:
-            print(f"❌ Model did not meet promotion criteria")
+            print("❌ Model did not meet promotion criteria")
             print(f"   Improvement: {comparison.get('improvement_mae', 0)*100:.2f}% (required: 2%)")
             return False
 
@@ -175,7 +175,7 @@ class ContinuousLearningPipeline:
             cassandra_hosts=self.config['cassandra_hosts'],
             keyspace=self.config['cassandra_keyspace']
         )
-        train_data, val_data, test_data = data_loader.load_and_split()
+        train_data, val_data, _ = data_loader.load_and_split()
         
         # Initialize model
         model = CNNLSTMAttentionModel(

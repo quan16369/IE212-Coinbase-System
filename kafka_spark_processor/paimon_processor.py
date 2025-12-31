@@ -7,11 +7,17 @@
 # - Both batch and streaming reads
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import *
-from pyspark.sql.types import *
+from pyspark.sql.functions import (
+    col, from_json, current_timestamp, date_format,
+    window, first, max as spark_max, min as spark_min, last, sum as spark_sum, count
+)
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Default warehouse path constant
+DEFAULT_WAREHOUSE_PATH = "s3a://crypto-pipeline-data-lake/paimon"
 
 
 class PaimonDataLake:
@@ -26,7 +32,7 @@ class PaimonDataLake:
     - Schema evolution
     """
     
-    def __init__(self, warehouse_path: str = "s3a://crypto-pipeline-data-lake/paimon"):
+    def __init__(self, warehouse_path: str = DEFAULT_WAREHOUSE_PATH):
         """
         Initialize Paimon data lakehouse
         

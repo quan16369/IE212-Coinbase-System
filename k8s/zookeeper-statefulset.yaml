@@ -87,9 +87,11 @@ spec:
           requests:
             memory: "1Gi"
             cpu: "500m"
+            ephemeral-storage: "2Gi"
           limits:
-            memory: "2Gi"
-            cpu: "1000m"
+            memory: "1Gi"
+            cpu: "500m"
+            ephemeral-storage: "5Gi"
         volumeMounts:
         - name: zk-data
           mountPath: /var/lib/zookeeper/data

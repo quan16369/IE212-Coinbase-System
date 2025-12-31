@@ -75,9 +75,11 @@ spec:
           requests:
             memory: "4Gi"
             cpu: "2000m"
+            ephemeral-storage: "5Gi"
           limits:
-            memory: "8Gi"
-            cpu: "4000m"
+            memory: "4Gi"
+            cpu: "2000m"
+            ephemeral-storage: "10Gi"
         ports:
         - containerPort: 4040
           name: spark-ui

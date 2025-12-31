@@ -22,6 +22,7 @@ spec:
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
+      automountServiceAccountToken: false
       # Init container to extract model from OCI artifact
       initContainers:
       - name: model-loader
@@ -33,7 +34,7 @@ spec:
       
       containers:
       - name: predictor
-        image: prediction-service:latest
+        image: prediction-service:1.0.0
         ports:
         - containerPort: 8000
           name: http
@@ -67,9 +68,11 @@ spec:
           requests:
             memory: "1Gi"
             cpu: "500m"
+            ephemeral-storage: "2Gi"
           limits:
             memory: "2Gi"
             cpu: "1000m"
+            ephemeral-storage: "5Gi"
         
         livenessProbe:
           httpGet:
