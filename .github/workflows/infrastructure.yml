@@ -1,0 +1,74 @@
+name: Infrastructure Deployment
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform/**'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform action (plan/apply/destroy)'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+
+env:
+  AWS_REGION: us-east-1
+  TF_VERSION: 1.6.0
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -out=tfplan -no-color
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v3
+        with:
+          name: tfplan
+          path: terraform/tfplan
+
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply' || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+        run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy
+        if: github.event.inputs.action == 'destroy'
+        run: terraform destroy -auto-approve

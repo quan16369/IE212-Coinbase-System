@@ -1,0 +1,42 @@
+name: Model Continuous Learning
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  CLUSTER_NAME: crypto-pipeline-cluster
+
+jobs:
+  retrain-model:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
+
+      - name: Trigger retraining job
+        run: |
+          kubectl create job --from=cronjob/model-retraining \
+            manual-retrain-$(date +%Y%m%d-%H%M%S) -n crypto-mlops
+
+      - name: Wait for job completion
+        run: |
+          kubectl wait --for=condition=complete --timeout=3600s \
+            job/manual-retrain-* -n crypto-mlops
+
+      - name: Check model performance
+        run: |
+          kubectl logs -n crypto-mlops job/manual-retrain-* --tail=100

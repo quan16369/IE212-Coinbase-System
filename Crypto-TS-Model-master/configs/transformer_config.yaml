@@ -1,0 +1,181 @@
+# Updated training configuration for Transformer model
+
+model:
+  model_type: "transformer"     # Use modern Transformer architecture
+  
+  # Input/Output dimensions
+  enc_in: 6                     # OHLCV + Volume (can add more technical indicators)
+  output_dim: 1                 # Predicting price
+  seq_len: 288                  # 24 hours of 5-minute data
+  pred_len: 12                  # Predict next 1 hour (12 * 5 min)
+  
+  # Transformer architecture
+  d_model: 256                  # Model dimension (embedding size)
+  n_heads: 8                    # Number of attention heads
+  n_layers: 4                   # Number of transformer layers
+  d_ff: 1024                    # Feed-forward dimension (4x d_model)
+  dropout: 0.1                  # Dropout rate
+  
+  # Multi-horizon prediction (optional)
+  prediction_horizons: [1, 3, 6, 12]  # 5min, 15min, 30min, 1hour
+
+data:
+  # Paimon lakehouse integration
+  use_paimon: true
+  paimon_warehouse: "s3a://crypto-pipeline-data-lake/paimon"
+  paimon_table: "crypto_db.ml_features"
+  
+  # Fallback to CSV if Paimon not available
+  path: "data/BTC-USD_5m.csv"
+  freq: "5T"
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+  
+  # Feature engineering
+  use_technical_indicators: true
+  indicators:
+    - rsi_14
+    - macd
+    - bollinger_bands
+    - atr_14
+    - obv
+    - volume_sma
+  
+  # Data augmentation
+  use_augmentation: true
+  augmentation:
+    noise_level: 0.01
+    time_shift: true
+    magnitude_warp: true
+
+training:
+  # Training parameters
+  epochs: 100
+  batch_size: 128
+  lr: 0.0001
+  weight_decay: 0.0001
+  
+  # Optimizer
+  optimizer: "adamw"            # AdamW with weight decay
+  betas: [0.9, 0.999]
+  eps: 1.0e-08
+  
+  # Learning rate schedule
+  lr_scheduler: "onecycle"      # OneCycleLR for faster convergence
+  max_lr: 0.001
+  pct_start: 0.3
+  
+  # Loss function
+  loss_fn: "huber"              # Huber loss (robust to outliers)
+  huber_delta: 1.0
+  
+  # Multi-task learning (optional)
+  use_multi_task: false
+  task_weights:
+    price_prediction: 1.0
+    direction_prediction: 0.5
+    volatility_prediction: 0.3
+  
+  # Regularization
+  use_amp: true                 # Automatic Mixed Precision
+  grad_clip: 1.0
+  label_smoothing: 0.0
+  
+  # Early stopping
+  patience: 20
+  min_delta: 0.0001
+  
+  # Checkpointing
+  checkpoint_dir: "checkpoints"
+  checkpoint_interval: 5
+  save_best_only: true
+  
+  # Model averaging
+  use_swa: true                 # Stochastic Weight Averaging
+  swa_lr: 0.001
+  swa_start_epoch: 75
+  
+  # Logging
+  log_dir: "logs"
+  log_interval: 100
+  use_wandb: false              # Weights & Biases integration
+  wandb_project: "crypto-prediction"
+  
+  # Distributed training (optional)
+  distributed: false
+  world_size: 1
+  
+  # Device
+  device: "cuda"
+  num_workers: 4
+
+evaluation:
+  # Metrics
+  metrics:
+    - mae                       # Mean Absolute Error
+    - rmse                      # Root Mean Squared Error
+    - mape                      # Mean Absolute Percentage Error
+    - r2                        # R-squared
+    - direction_accuracy        # Prediction direction accuracy
+  
+  # Backtesting
+  backtest: true
+  backtest_periods: [30, 60, 90]  # Days
+  
+  # Confidence intervals
+  compute_confidence: true
+  confidence_level: 0.95
+
+inference:
+  # Batch inference
+  batch_size: 256
+  
+  # Real-time inference
+  use_streaming: true
+  streaming_batch_size: 32
+  max_latency_ms: 100
+  
+  # Model ensemble
+  use_ensemble: false
+  ensemble_models: []
+  ensemble_method: "weighted_average"
+  
+  # Output
+  output_format: "json"
+  save_predictions: true
+  predictions_table: "crypto_db.predictions"
+
+mlops:
+  # MLflow integration
+  use_mlflow: true
+  mlflow_tracking_uri: "http://mlflow:5000"
+  experiment_name: "crypto-transformer"
+  
+  # Model registry
+  register_model: true
+  model_name: "crypto-transformer-btc"
+  
+  # Auto-promotion
+  auto_promote: true
+  promotion_metric: "mae"
+  promotion_threshold: 0.02     # 2% improvement required
+  
+  # Model versioning
+  semantic_versioning: true
+  version_prefix: "v"
+
+monitoring:
+  # Performance monitoring
+  track_latency: true
+  track_throughput: true
+  
+  # Drift detection
+  detect_drift: true
+  drift_threshold: 0.1
+  drift_window: 1000
+  
+  # Alerts
+  alert_on_error_spike: true
+  error_threshold: 0.1
+  alert_channels: ["slack", "email"]

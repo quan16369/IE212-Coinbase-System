@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: crypto-monitoring
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      slack_api_url: 'YOUR_SLACK_WEBHOOK_URL'
+      pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      receiver: 'default'
+      routes:
+      
+      # Critical alerts go to PagerDuty
+      - match:
+          severity: critical
+        receiver: 'pagerduty'
+        continue: true
+      
+      # All alerts go to Slack
+      - match_re:
+          severity: ^(warning|critical)$
+        receiver: 'slack'
+      
+      # ML-specific alerts
+      - match:
+          component: ml-model
+        receiver: 'ml-team-slack'
+      
+      # Infrastructure alerts
+      - match:
+          component: infrastructure
+        receiver: 'infra-team-slack'
+
+    receivers:
+    - name: 'default'
+      slack_configs:
+      - channel: '#crypto-pipeline-alerts'
+        title: 'Crypto Pipeline Alert'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+
+    - name: 'slack'
+      slack_configs:
+      - channel: '#crypto-pipeline-alerts'
+        title: '{{ .GroupLabels.alertname }}'
+        text: |-
+          {{ range .Alerts }}
+            *Alert:* {{ .Labels.alertname }}
+            *Severity:* {{ .Labels.severity }}
+            *Component:* {{ .Labels.component }}
+            *Summary:* {{ .Annotations.summary }}
+            *Description:* {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+
+    - name: 'pagerduty'
+      pagerduty_configs:
+      - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'
+        severity: '{{ .CommonLabels.severity }}'
+        description: '{{ .CommonAnnotations.summary }}'
+        details:
+          firing: '{{ .Alerts.Firing | len }}'
+          resolved: '{{ .Alerts.Resolved | len }}'
+          component: '{{ .CommonLabels.component }}'
+
+    - name: 'ml-team-slack'
+      slack_configs:
+      - channel: '#ml-team-alerts'
+        title: 'ML Model Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+
+    - name: 'infra-team-slack'
+      slack_configs:
+      - channel: '#infra-team-alerts'
+        title: 'Infrastructure Alert: {{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}'
+        send_resolved: true
+
+    inhibit_rules:
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['alertname', 'cluster', 'service']

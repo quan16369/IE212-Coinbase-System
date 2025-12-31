@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prediction-service
+  namespace: crypto-pipeline
+  labels:
+    app: prediction-service
+    version: v1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: prediction-service
+      version: v1
+  template:
+    metadata:
+      labels:
+        app: prediction-service
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+      - name: prediction-service
+        image: ${DOCKER_REGISTRY}/prediction-service:${VERSION}
+        imagePullPolicy: Always
+        env:
+        - name: CASSANDRA_HOST
+          value: "cassandra-0.cassandra.crypto-pipeline.svc.cluster.local"
+        - name: CASSANDRA_PORT
+          value: "9042"
+        - name: MODEL_PATH
+          value: "/models/best_model.pt"
+        - name: MLFLOW_TRACKING_URI
+          value: "http://mlflow.crypto-mlops.svc.cluster.local:5000"
+        - name: MODEL_VERSION
+          value: "production"
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: model-volume
+          mountPath: /models
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 5
+      volumes:
+      - name: model-volume
+        persistentVolumeClaim:
+          claimName: model-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prediction-service
+  namespace: crypto-pipeline
+  labels:
+    app: prediction-service
+spec:
+  selector:
+    app: prediction-service
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: http
+  type: ClusterIP
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: model-pvc
+  namespace: crypto-pipeline
+spec:
+  accessModes:
+  - ReadWriteMany
+  storageClassName: efs
+  resources:
+    requests:
+      storage: 50Gi

@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: crypto-pipeline-environments
+  namespace: argocd
+spec:
+  generators:
+  - list:
+      elements:
+      - environment: dev
+        namespace: crypto-pipeline-dev
+        replicas: "1"
+        resources: "small"
+      - environment: staging
+        namespace: crypto-pipeline-staging
+        replicas: "2"
+        resources: "medium"
+      - environment: production
+        namespace: crypto-pipeline
+        replicas: "3"
+        resources: "large"
+  
+  template:
+    metadata:
+      name: 'crypto-pipeline-{{environment}}'
+    spec:
+      project: crypto-pipeline-project
+      source:
+        repoURL: https://github.com/YOUR_USERNAME/crypto-pipeline.git
+        targetRevision: '{{environment}}'
+        path: helm
+        helm:
+          valueFiles:
+          - values-{{environment}}.yaml
+          parameters:
+          - name: producer.replicaCount
+            value: '{{replicas}}'
+          - name: predictionService.replicaCount
+            value: '{{replicas}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - CreateNamespace=true

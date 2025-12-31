@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mlops-stack
+  namespace: argocd
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/YOUR_USERNAME/crypto-pipeline.git  # UPDATE THIS
+    targetRevision: main
+    path: mlops
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: crypto-mlops
+  
+  syncPolicy:
+    automated:
+      prune: false  # Don't auto-prune model deployments
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+  
+  # Custom sync waves for proper ordering
+  syncPolicy:
+    syncOptions:
+    - CreateNamespace=true
+  
+  # Sync waves
+  metadata:
+    annotations:
+      argocd.argoproj.io/sync-wave: "2"

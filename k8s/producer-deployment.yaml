@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coinbase-producer
+  namespace: crypto-pipeline
+  labels:
+    app: coinbase-producer
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: coinbase-producer
+  template:
+    metadata:
+      labels:
+        app: coinbase-producer
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+      - name: producer
+        image: ${DOCKER_REGISTRY}/coinbase-producer:${VERSION}
+        imagePullPolicy: Always
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-0.kafka-headless:9092,kafka-1.kafka-headless:9092,kafka-2.kafka-headless:9092"
+        - name: KAFKA_TOPIC
+          value: "crypto-prices"
+        - name: COINBASE_WS_URL
+          value: "wss://ws-feed.exchange.coinbase.com"
+        - name: SYMBOLS
+          value: "BTC-USD,ETH-USD,SOL-USD"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coinbase-producer
+  namespace: crypto-pipeline
+  labels:
+    app: coinbase-producer
+spec:
+  selector:
+    app: coinbase-producer
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: metrics

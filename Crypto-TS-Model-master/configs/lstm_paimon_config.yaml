@@ -1,0 +1,121 @@
+# Simple LSTM configuration with Paimon integration
+# Optimized for production use: simple, stable, efficient
+
+model:
+  model_type: "lstm_attention"   # Simple LSTM with attention
+  
+  # Input/Output dimensions
+  enc_in: 6                       # OHLCV + Volume + basic indicators
+  output_dim: 1                   # Predict price
+  seq_len: 288                    # 24 hours of 5-minute data
+  pred_len: 12                    # Predict next 1 hour
+  
+  # LSTM architecture (simple and effective)
+  d_model: 128                    # Hidden dimension
+  n_layers: 2                     # 2 LSTM layers (enough for most cases)
+  dropout: 0.2                    # Prevent overfitting
+  
+  # Attention (lightweight)
+  n_heads: 4                      # 4 attention heads
+  use_attention: true             # Improves accuracy without much overhead
+
+data:
+  # Paimon lakehouse integration
+  use_paimon: true
+  paimon_warehouse: "s3a://ie212-coinbase-data/paimon"
+  paimon_table: "crypto_db.ml_features"
+  
+  # Fallback to CSV if Paimon not available
+  path: "data/BTC-USD_5m.csv"
+  freq: "5T"
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+  
+  # Simple feature set (enough for good predictions)
+  use_technical_indicators: true
+  indicators:
+    - rsi_14          # Momentum
+    - macd            # Trend
+    - bb_middle       # Volatility
+    - volume_sma      # Volume trend
+
+training:
+  # Training parameters (conservative for stability)
+  epochs: 50                      # Fewer epochs, faster training
+  batch_size: 64                  # Smaller batch for stability
+  lr: 0.001                       # Standard learning rate
+  weight_decay: 0.0001
+  
+  # Optimizer
+  optimizer: "adam"               # Simple and reliable
+  betas: [0.9, 0.999]
+  
+  # Learning rate schedule (simple)
+  lr_scheduler: "step"            # Step decay
+  lr_decay_step: 10
+  lr_decay_factor: 0.5
+  
+  # Loss function
+  loss_fn: "mse"                  # Mean Squared Error (simple, effective)
+  
+  # Regularization (minimal)
+  use_amp: false                  # No mixed precision (simpler)
+  grad_clip: 1.0
+  
+  # Early stopping
+  patience: 10                    # Stop if no improvement
+  min_delta: 0.001
+  
+  # Checkpointing
+  checkpoint_dir: "checkpoints"
+  save_best_only: true
+  
+  # Logging
+  log_dir: "logs"
+  log_interval: 50
+  
+  # Device
+  device: "cpu"                   # CPU-friendly for production
+  num_workers: 2
+
+evaluation:
+  # Metrics (focus on practical metrics)
+  metrics:
+    - mae                         # Mean Absolute Error
+    - rmse                        # Root Mean Squared Error
+    - mape                        # Percentage error
+    - direction_accuracy          # Up/down direction
+  
+  # Simple evaluation
+  compute_confidence: true
+  confidence_level: 0.95
+
+inference:
+  # Production inference settings
+  batch_size: 32
+  max_latency_ms: 50              # Target 50ms latency
+  
+  # Output
+  output_format: "json"
+  save_predictions: true
+  predictions_table: "crypto_db.predictions"
+
+mlops:
+  # MLflow integration
+  use_mlflow: true
+  mlflow_tracking_uri: "http://mlflow:5000"
+  experiment_name: "crypto-lstm-simple"
+  
+  # Model registry
+  register_model: true
+  model_name: "crypto-lstm-btc"
+
+monitoring:
+  # Simple monitoring
+  track_latency: true
+  track_throughput: true
+  
+  # Drift detection
+  detect_drift: true
+  drift_threshold: 0.15

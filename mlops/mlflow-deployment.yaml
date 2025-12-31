@@ -1,0 +1,168 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow
+  namespace: crypto-mlops
+  labels:
+    app: mlflow
+spec:
+  selector:
+    app: mlflow
+  ports:
+  - port: 5000
+    targetPort: 5000
+    name: http
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mlflow
+  namespace: crypto-mlops
+  labels:
+    app: mlflow
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mlflow
+  template:
+    metadata:
+      labels:
+        app: mlflow
+    spec:
+      containers:
+      - name: mlflow
+        image: ghcr.io/mlflow/mlflow:v2.9.2
+        command:
+        - mlflow
+        - server
+        - --host=0.0.0.0
+        - --port=5000
+        - --backend-store-uri=postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@mlflow-postgres:5432/mlflow
+        - --default-artifact-root=s3://$(S3_BUCKET)/mlflow-artifacts
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: postgres-user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: postgres-password
+        - name: S3_BUCKET
+          valueFrom:
+            configMapKeyRef:
+              name: mlflow-config
+              key: s3-bucket
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+        ports:
+        - containerPort: 5000
+          name: http
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mlflow-config
+  namespace: crypto-mlops
+data:
+  s3-bucket: "crypto-pipeline-cluster-data-lake"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mlflow-secrets
+  namespace: crypto-mlops
+type: Opaque
+stringData:
+  postgres-user: "mlflow"
+  postgres-password: "changeme"  # Change in production
+---
+# PostgreSQL for MLflow backend
+apiVersion: v1
+kind: Service
+metadata:
+  name: mlflow-postgres
+  namespace: crypto-mlops
+spec:
+  selector:
+    app: mlflow-postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mlflow-postgres
+  namespace: crypto-mlops
+spec:
+  serviceName: mlflow-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mlflow-postgres
+  template:
+    metadata:
+      labels:
+        app: mlflow-postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_DB
+          value: "mlflow"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: postgres-user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mlflow-secrets
+              key: postgres-password
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 50Gi

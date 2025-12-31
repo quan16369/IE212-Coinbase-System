@@ -1,11 +1,55 @@
-~
-spark-3.5.5
-kafka_2.13-4.0.0
-.env
-test.py
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/.terraform.tfstate.lock.info
+**/tfplan
+
+# Python
 __pycache__/
-*.pyc
-Final.code-workspace
-model_producer.py
-cacandles_processor.Dockerfile
-candles_processor.py
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+
+# Data
+data/
+*.csv
+*.parquet
+
+# Models
+*.pth
+*.pt
+*.h5
+*.pkl
+*.joblib
+
+# Temporary
+tmp/
+temp/

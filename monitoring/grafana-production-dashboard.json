@@ -1,0 +1,239 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "title": "Crypto Pipeline Production Dashboard",
+  "uid": "crypto-prod-overview",
+  "version": 1,
+  "timezone": "browser",
+  "panels": [
+    {
+      "title": "System Overview",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}
+    },
+    {
+      "title": "Prediction Service Availability",
+      "type": "stat",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "avg(up{job=\"kubernetes-pods\",app=\"prediction-service\"}) * 100"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 1},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": 0, "color": "red"},
+              {"value": 95, "color": "yellow"},
+              {"value": 99, "color": "green"}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Predictions Per Second",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(prediction_requests_total[5m]))"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 9, "x": 6, "y": 1}
+    },
+    {
+      "title": "P95 Prediction Latency",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(prediction_duration_seconds_bucket[5m]))"
+        }
+      ],
+      "gridPos": {"h": 4, "w": 9, "x": 15, "y": 1},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      }
+    },
+    {
+      "title": "Kafka Metrics",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 5}
+    },
+    {
+      "title": "Kafka Throughput (Messages/sec)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(kafka_server_brokertopicmetrics_messagesin_total[5m]))",
+          "legendFormat": "Messages In"
+        },
+        {
+          "expr": "sum(rate(kafka_server_brokertopicmetrics_bytesout_total[5m]))",
+          "legendFormat": "Bytes Out"
+        }
+      ],
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 6}
+    },
+    {
+      "title": "Kafka Consumer Lag",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "kafka_consumergroup_lag{topic=\"crypto-prices\"}",
+          "legendFormat": "{{ consumergroup }}"
+        }
+      ],
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 6}
+    },
+    {
+      "title": "Model Performance",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 12}
+    },
+    {
+      "title": "Model Accuracy (MAE)",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "model_mae_score",
+          "legendFormat": "MAE Score"
+        }
+      ],
+      "gridPos": {"h": 6, "w": 8, "x": 0, "y": 13},
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": 0, "color": "green"},
+              {"value": 0.05, "color": "yellow"},
+              {"value": 0.1, "color": "red"}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "title": "Prediction Distribution",
+      "type": "heatmap",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "rate(prediction_value_bucket[5m])"
+        }
+      ],
+      "gridPos": {"h": 6, "w": 8, "x": 8, "y": 13}
+    },
+    {
+      "title": "Model Version Timeline",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "model_version_info",
+          "legendFormat": "Version {{ version }}"
+        }
+      ],
+      "gridPos": {"h": 6, "w": 8, "x": 16, "y": 13}
+    },
+    {
+      "title": "Infrastructure",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 19}
+    },
+    {
+      "title": "CPU Usage by Service",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"crypto-pipeline\"}[5m])) by (pod)",
+          "legendFormat": "{{ pod }}"
+        }
+      ],
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 20}
+    },
+    {
+      "title": "Memory Usage by Service",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "sum(container_memory_usage_bytes{namespace=\"crypto-pipeline\"}) by (pod) / 1024 / 1024 / 1024",
+          "legendFormat": "{{ pod }}"
+        }
+      ],
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 20},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "GiB"
+        }
+      }
+    },
+    {
+      "title": "Cassandra Metrics",
+      "type": "row",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 26}
+    },
+    {
+      "title": "Cassandra Read/Write Latency",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "cassandra_clientrequest_latency{operation=\"read\",quantile=\"0.99\"}",
+          "legendFormat": "Read P99"
+        },
+        {
+          "expr": "cassandra_clientrequest_latency{operation=\"write\",quantile=\"0.99\"}",
+          "legendFormat": "Write P99"
+        }
+      ],
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 27},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µs"
+        }
+      }
+    },
+    {
+      "title": "Cassandra Disk Usage",
+      "type": "graph",
+      "datasource": "Prometheus",
+      "targets": [
+        {
+          "expr": "cassandra_disk_usage_bytes / cassandra_disk_total_bytes * 100",
+          "legendFormat": "{{ instance }}"
+        }
+      ],
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 27},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
+    }
+  ]
+}

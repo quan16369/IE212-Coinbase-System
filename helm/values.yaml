@@ -1,0 +1,172 @@
+# Global Configuration
+global:
+  registry: ""
+  imageTag: "latest"
+  storageClass: "fast-ssd"
+
+# Kafka Configuration (Bitnami Helm Chart)
+kafka:
+  enabled: true
+  replicaCount: 3
+  persistence:
+    enabled: true
+    size: 100Gi
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 1000m
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+  zookeeper:
+    enabled: true
+    replicaCount: 3
+    persistence:
+      enabled: true
+      size: 50Gi
+
+# Cassandra Configuration (Bitnami Helm Chart)
+cassandra:
+  enabled: true
+  cluster:
+    replicaCount: 3
+    datacenter: DC1
+  dbUser:
+    user: crypto_user
+  persistence:
+    enabled: true
+    size: 200Gi
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: 2000m
+    limits:
+      memory: 8Gi
+      cpu: 4000m
+
+# Prometheus Configuration
+prometheus:
+  enabled: true
+  server:
+    retention: "30d"
+    persistentVolume:
+      enabled: true
+      size: 100Gi
+  alertmanager:
+    enabled: true
+    persistentVolume:
+      enabled: true
+      size: 10Gi
+
+# Grafana Configuration
+grafana:
+  enabled: true
+  adminPassword: "admin123"
+  persistence:
+    enabled: true
+    size: 10Gi
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-server
+        access: proxy
+        isDefault: true
+      - name: Cassandra
+        type: cassandra
+        url: cassandra:9042
+        access: proxy
+
+# Producer Service
+producer:
+  replicaCount: 2
+  image:
+    repository: coinbase-producer
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 250m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  env:
+    kafkaBootstrapServers: "kafka-0.kafka-headless:9092"
+    symbols: "BTC-USD,ETH-USD,SOL-USD"
+
+# Spark Processor
+sparkProcessor:
+  replicaCount: 1
+  image:
+    repository: spark-processor
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: 2000m
+    limits:
+      memory: 8Gi
+      cpu: 4000m
+  executor:
+    instances: 3
+    memory: "2g"
+    cores: 2
+
+# Prediction Service
+predictionService:
+  replicaCount: 3
+  image:
+    repository: prediction-service
+    pullPolicy: Always
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 1000m
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  modelStorage:
+    enabled: true
+    size: 50Gi
+    storageClass: efs
+
+# MLflow
+mlflow:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: ghcr.io/mlflow/mlflow
+    tag: v2.9.2
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 500m
+    limits:
+      memory: 2Gi
+      cpu: 1000m
+  persistence:
+    enabled: true
+    size: 100Gi
+  postgresql:
+    enabled: true
+
+# Seldon Core (for Model Serving)
+seldonCore:
+  enabled: true
+  usageMetrics:
+    enabled: true
+  istio:
+    enabled: true
+  executor:
+    resources:
+      requests:
+        memory: 1Gi
+        cpu: 500m

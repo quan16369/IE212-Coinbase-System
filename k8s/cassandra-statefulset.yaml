@@ -1,0 +1,100 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cassandra
+  namespace: crypto-pipeline
+  labels:
+    app: cassandra
+spec:
+  ports:
+  - port: 9042
+    name: cql
+  clusterIP: None
+  selector:
+    app: cassandra
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cassandra
+  namespace: crypto-pipeline
+spec:
+  serviceName: cassandra
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cassandra
+  template:
+    metadata:
+      labels:
+        app: cassandra
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - cassandra
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: cassandra
+        image: cassandra:4.1
+        ports:
+        - containerPort: 7000
+          name: intra-node
+        - containerPort: 7001
+          name: tls-intra-node
+        - containerPort: 7199
+          name: jmx
+        - containerPort: 9042
+          name: cql
+        env:
+        - name: CASSANDRA_SEEDS
+          value: "cassandra-0.cassandra.crypto-pipeline.svc.cluster.local"
+        - name: CASSANDRA_CLUSTER_NAME
+          value: "CryptoCluster"
+        - name: CASSANDRA_DC
+          value: "DC1"
+        - name: CASSANDRA_RACK
+          value: "Rack1"
+        - name: CASSANDRA_ENDPOINT_SNITCH
+          value: "GossipingPropertyFileSnitch"
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        resources:
+          requests:
+            memory: "4Gi"
+            cpu: "2000m"
+          limits:
+            memory: "8Gi"
+            cpu: "4000m"
+        volumeMounts:
+        - name: cassandra-data
+          mountPath: /var/lib/cassandra
+        livenessProbe:
+          tcpSocket:
+            port: 9042
+          initialDelaySeconds: 90
+          periodSeconds: 30
+        readinessProbe:
+          exec:
+            command:
+            - /bin/bash
+            - -c
+            - "nodetool status | grep -E '^UN\\s+${POD_IP}'"
+          initialDelaySeconds: 90
+          periodSeconds: 30
+  volumeClaimTemplates:
+  - metadata:
+      name: cassandra-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: fast-ssd
+      resources:
+        requests:
+          storage: 200Gi

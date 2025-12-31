@@ -1,0 +1,113 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-retraining
+  namespace: crypto-mlops
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: model-retraining
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: retraining
+            image: ${DOCKER_REGISTRY}/model-trainer:${VERSION}
+            imagePullPolicy: Always
+            command:
+            - python
+            - /app/mlops/mlflow_manager.py
+            env:
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow.crypto-mlops.svc.cluster.local:5000"
+            - name: CASSANDRA_HOSTS
+              value: "cassandra-0.cassandra.crypto-pipeline.svc.cluster.local"
+            - name: CASSANDRA_KEYSPACE
+              value: "crypto_data"
+            - name: MODEL_NAME
+              value: "crypto-lstm-model"
+            - name: PROMOTION_THRESHOLD
+              value: "0.02"  # 2% improvement required
+            resources:
+              requests:
+                memory: "8Gi"
+                cpu: "4000m"
+                nvidia.com/gpu: "1"
+              limits:
+                memory: "16Gi"
+                cpu: "8000m"
+                nvidia.com/gpu: "1"
+            volumeMounts:
+            - name: data-cache
+              mountPath: /data
+            - name: model-cache
+              mountPath: /models
+          volumes:
+          - name: data-cache
+            emptyDir:
+              sizeLimit: 20Gi
+          - name: model-cache
+            persistentVolumeClaim:
+              claimName: model-pvc
+          nodeSelector:
+            node.kubernetes.io/instance-type: "p3.2xlarge"  # GPU instance
+          tolerations:
+          - key: nvidia.com/gpu
+            operator: Exists
+            effect: NoSchedule
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-validation
+  namespace: crypto-mlops
+spec:
+  schedule: "30 * * * *"  # Every hour at :30
+  concurrencyPolicy: Allow
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: model-validation
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: validation
+            image: ${DOCKER_REGISTRY}/model-validator:${VERSION}
+            imagePullPolicy: Always
+            command:
+            - python
+            - /app/mlops/model_validator.py
+            env:
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow.crypto-mlops.svc.cluster.local:5000"
+            - name: CASSANDRA_HOSTS
+              value: "cassandra-0.cassandra.crypto-pipeline.svc.cluster.local"
+            - name: ALERT_WEBHOOK
+              valueFrom:
+                secretKeyRef:
+                  name: alert-secrets
+                  key: webhook-url
+            resources:
+              requests:
+                memory: "2Gi"
+                cpu: "1000m"
+              limits:
+                memory: "4Gi"
+                cpu: "2000m"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alert-secrets
+  namespace: crypto-mlops
+type: Opaque
+stringData:
+  webhook-url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"

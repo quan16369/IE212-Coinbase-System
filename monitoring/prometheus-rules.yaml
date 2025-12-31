@@ -1,0 +1,188 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-rules
+  namespace: crypto-monitoring
+data:
+  crypto-pipeline.yml: |
+    groups:
+    - name: crypto_pipeline_alerts
+      interval: 30s
+      rules:
+      
+      # High-level Service Availability
+      - alert: PredictionServiceDown
+        expr: up{job="kubernetes-pods",app="prediction-service"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: prediction-service
+        annotations:
+          summary: "Prediction service is down"
+          description: "Prediction service {{ $labels.kubernetes_pod_name }} has been down for more than 2 minutes."
+
+      - alert: KafkaClusterDown
+        expr: up{job="kafka"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: kafka
+        annotations:
+          summary: "Kafka broker is down"
+          description: "Kafka broker {{ $labels.instance }} is down."
+
+      - alert: CassandraNodeDown
+        expr: up{job="cassandra"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: cassandra
+        annotations:
+          summary: "Cassandra node is down"
+          description: "Cassandra node {{ $labels.instance }} has been down for more than 2 minutes."
+
+      # Performance Alerts
+      - alert: HighPredictionLatency
+        expr: histogram_quantile(0.95, rate(prediction_duration_seconds_bucket[5m])) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: prediction-service
+        annotations:
+          summary: "High prediction latency detected"
+          description: "95th percentile prediction latency is {{ $value }}s (threshold: 1s)"
+
+      - alert: HighErrorRate
+        expr: rate(prediction_errors_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: prediction-service
+        annotations:
+          summary: "High error rate in predictions"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+      # Resource Alerts
+      - alert: HighMemoryUsage
+        expr: container_memory_usage_bytes{namespace="crypto-pipeline"} / container_spec_memory_limit_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage"
+          description: "Container {{ $labels.pod }} is using {{ $value | humanizePercentage }} of its memory limit"
+
+      - alert: HighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{namespace="crypto-pipeline"}[5m]) / container_spec_cpu_quota * 100 > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage"
+          description: "Container {{ $labels.pod }} is using {{ $value }}% CPU"
+
+      # Data Pipeline Alerts
+      - alert: KafkaLag
+        expr: kafka_consumergroup_lag > 10000
+        for: 10m
+        labels:
+          severity: warning
+          component: kafka
+        annotations:
+          summary: "High Kafka consumer lag"
+          description: "Consumer group {{ $labels.consumergroup }} has lag of {{ $value }} messages"
+
+      - alert: SparkJobFailed
+        expr: increase(spark_job_failed_total[10m]) > 0
+        labels:
+          severity: warning
+          component: spark
+        annotations:
+          summary: "Spark job failures detected"
+          description: "{{ $value }} Spark jobs have failed in the last 10 minutes"
+
+      # ML Model Alerts
+      - alert: ModelAccuracyDrift
+        expr: model_mae_score > 0.1
+        for: 30m
+        labels:
+          severity: warning
+          component: ml-model
+        annotations:
+          summary: "Model accuracy drift detected"
+          description: "Model MAE is {{ $value }}, indicating potential drift (threshold: 0.1)"
+
+      - alert: ModelPredictionAnomaly
+        expr: abs(rate(prediction_value_sum[5m]) / rate(prediction_value_count[5m]) - avg_over_time((rate(prediction_value_sum[5m]) / rate(prediction_value_count[5m]))[1h:5m])) > 0.3
+        for: 15m
+        labels:
+          severity: warning
+          component: ml-model
+        annotations:
+          summary: "Anomalous prediction patterns detected"
+          description: "Prediction values are deviating significantly from recent average"
+
+      # Storage Alerts
+      - alert: DiskSpaceRunningOut
+        expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Disk space critically low"
+          description: "Disk space on {{ $labels.instance }} is below 10%: {{ $value | humanizePercentage }}"
+
+      - alert: CassandraHighDiskUsage
+        expr: cassandra_disk_usage_bytes / cassandra_disk_total_bytes > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          component: cassandra
+        annotations:
+          summary: "Cassandra disk usage high"
+          description: "Cassandra disk usage on {{ $labels.instance }} is {{ $value | humanizePercentage }}"
+
+    - name: mlops_alerts
+      interval: 60s
+      rules:
+      
+      - alert: ModelRetrainingFailed
+        expr: increase(model_retraining_failures_total[1h]) > 0
+        labels:
+          severity: critical
+          component: mlops
+        annotations:
+          summary: "Model retraining failed"
+          description: "{{ $value }} model retraining jobs have failed in the last hour"
+
+      - alert: NoModelUpdates
+        expr: time() - model_last_update_timestamp > 86400
+        labels:
+          severity: warning
+          component: mlops
+        annotations:
+          summary: "No model updates for 24 hours"
+          description: "Production model hasn't been updated in over 24 hours"
+
+      - alert: SeldonPredictorDown
+        expr: up{job="seldon"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: seldon
+        annotations:
+          summary: "Seldon predictor is down"
+          description: "Seldon predictor {{ $labels.pod }} has been down for more than 2 minutes"
+
+      - alert: CanaryDeploymentErrors
+        expr: rate(seldon_api_executor_server_requests_seconds_count{code=~"5.."}[5m]) / rate(seldon_api_executor_server_requests_seconds_count[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: seldon
+        annotations:
+          summary: "High error rate in canary deployment"
+          description: "Canary deployment has {{ $value | humanizePercentage }} error rate (threshold: 10%)"

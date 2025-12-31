@@ -1,0 +1,24 @@
+# Requirements for Paimon integration
+
+# Apache Paimon
+paimon-spark-3.3==0.6.0
+
+# Spark dependencies
+pyspark==3.3.2
+py4j==0.10.9.5
+
+# AWS S3 support
+boto3==1.26.137
+s3fs==2023.5.0
+
+# Kafka integration  
+kafka-python==2.0.2
+
+# Data processing
+pandas==2.0.2
+numpy==1.24.3
+pyarrow==12.0.0
+
+# Existing requirements
+cassandra-driver==3.28.0
+pyyaml==6.0

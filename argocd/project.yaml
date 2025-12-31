@@ -1,0 +1,71 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: crypto-pipeline-project
+  namespace: argocd
+spec:
+  description: Crypto Pipeline Production Project
+  
+  # Source repositories
+  sourceRepos:
+  - 'https://github.com/YOUR_USERNAME/crypto-pipeline.git'
+  - 'https://charts.bitnami.com/bitnami'
+  - 'https://prometheus-community.github.io/helm-charts'
+  - 'https://grafana.github.io/helm-charts'
+  
+  # Destination clusters and namespaces
+  destinations:
+  - namespace: 'crypto-pipeline'
+    server: https://kubernetes.default.svc
+  - namespace: 'crypto-monitoring'
+    server: https://kubernetes.default.svc
+  - namespace: 'crypto-mlops'
+    server: https://kubernetes.default.svc
+  
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  - group: 'storage.k8s.io'
+    kind: StorageClass
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRole
+  - group: 'rbac.authorization.k8s.io'
+    kind: ClusterRoleBinding
+  
+  # Namespace resource whitelist
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+  
+  # Roles for RBAC
+  roles:
+  - name: read-only
+    description: Read-only access to applications
+    policies:
+    - p, proj:crypto-pipeline-project:read-only, applications, get, crypto-pipeline-project/*, allow
+    - p, proj:crypto-pipeline-project:read-only, applications, list, crypto-pipeline-project/*, allow
+    groups:
+    - developers
+  
+  - name: deployer
+    description: Can sync applications
+    policies:
+    - p, proj:crypto-pipeline-project:deployer, applications, *, crypto-pipeline-project/*, allow
+    - p, proj:crypto-pipeline-project:deployer, applications, sync, crypto-pipeline-project/*, allow
+    groups:
+    - devops
+  
+  # Sync windows
+  syncWindows:
+  - kind: allow
+    schedule: '0 8-18 * * 1-5'  # Business hours Mon-Fri
+    duration: 10h
+    applications:
+    - '*'
+  - kind: deny
+    schedule: '0 0-8,18-23 * * *'  # Outside business hours
+    duration: 10h
+    applications:
+    - 'crypto-pipeline'
+    manualSync: true  # Allow manual sync outside window

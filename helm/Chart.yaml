@@ -1,0 +1,18 @@
+# Helm Chart for Crypto Pipeline
+dependencies:
+- name: kafka
+  version: "26.4.3"
+  repository: "https://charts.bitnami.com/bitnami"
+  condition: kafka.enabled
+- name: cassandra
+  version: "10.6.2"
+  repository: "https://charts.bitnami.com/bitnami"
+  condition: cassandra.enabled
+- name: prometheus
+  version: "25.8.0"
+  repository: "https://prometheus-community.github.io/helm-charts"
+  condition: prometheus.enabled
+- name: grafana
+  version: "7.0.8"
+  repository: "https://grafana.github.io/helm-charts"
+  condition: grafana.enabled

@@ -1,0 +1,401 @@
+name: CI/CD Production Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - develop
+    paths:
+      - 'coinbase_kafka_producer/**'
+      - 'kafka_spark_processor/**'
+      - 'prediction_service/**'
+      - 'Crypto-TS-Model-master/**'
+      - 'k8s/**'
+      - 'helm/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches:
+      - main
+      - staging
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+  CLUSTER_NAME: crypto-pipeline-cluster
+  MLFLOW_TRACKING_URI: http://mlflow.crypto-mlops.svc.cluster.local:5000
+
+jobs:
+  # Job 1: Code Quality & Security Scanning
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black pylint bandit safety
+
+      - name: Lint with flake8
+        run: |
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Format check with black
+        run: black --check .
+
+      - name: Security check with bandit
+        run: bandit -r . -f json -o bandit-report.json || true
+
+      - name: Dependency vulnerability check
+        run: safety check --json || true
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: |
+            bandit-report.json
+
+  # Job 2: Unit & Integration Tests
+  test:
+    runs-on: ubuntu-latest
+    needs: code-quality
+    strategy:
+      matrix:
+        component: [producer, processor, prediction]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          if [ -f "${{ matrix.component }}_service/requirements.txt" ]; then
+            pip install -r ${{ matrix.component }}_service/requirements.txt
+          fi
+          pip install pytest pytest-cov pytest-mock
+
+      - name: Run unit tests
+        run: |
+          pytest tests/${{ matrix.component }} --cov --cov-report=xml --cov-report=html
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: ${{ matrix.component }}
+
+  # Job 3: Build and Push Docker Images
+  build:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    strategy:
+      matrix:
+        service:
+          - name: coinbase-producer
+            path: coinbase_kafka_producer
+            dockerfile: producer.Dockerfile
+          - name: spark-processor
+            path: kafka_spark_processor
+            dockerfile: processor.Dockerfile
+          - name: prediction-service
+            path: prediction_service
+            dockerfile: prediction.Dockerfile
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.ECR_REGISTRY }}/${{ matrix.service.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.service.path }}
+          file: ${{ matrix.service.path }}/${{ matrix.service.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          build-args: |
+            VERSION=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ matrix.service.name }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Job 4: Train and Register Model
+  train-model:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r Crypto-TS-Model-master/requirements.txt
+          pip install mlflow boto3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
+
+      - name: Port-forward MLflow
+        run: |
+          kubectl port-forward -n crypto-mlops svc/mlflow 5000:5000 &
+          sleep 10
+
+      - name: Train model
+        run: |
+          cd Crypto-TS-Model-master
+          python src/train.py --config configs/train_config.yaml
+
+      - name: Register model with MLflow
+        run: |
+          python mlops/mlflow_manager.py
+
+  # Job 5: Deploy to Staging
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/staging'
+    environment:
+      name: staging
+      url: https://staging.crypto-pipeline.example.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
+
+      - name: Update image tags in ArgoCD
+        run: |
+          kubectl patch application crypto-pipeline-staging -n argocd --type merge -p '
+          {
+            "spec": {
+              "source": {
+                "helm": {
+                  "parameters": [
+                    {
+                      "name": "global.imageTag",
+                      "value": "${{ github.sha }}"
+                    }
+                  ]
+                }
+              }
+            }
+          }'
+
+      - name: Wait for deployment
+        run: |
+          kubectl wait --for=condition=Synced --timeout=600s \
+            application/crypto-pipeline-staging -n argocd
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n crypto-pipeline-staging
+          kubectl rollout status deployment/prediction-service -n crypto-pipeline-staging
+
+  # Job 6: Deploy to Production
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [build, train-model]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://crypto-pipeline.example.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
+
+      - name: Create canary deployment
+        run: |
+          kubectl patch seldondeployment crypto-model-serving -n crypto-pipeline --type merge -p '
+          {
+            "spec": {
+              "predictors": [
+                {
+                  "name": "canary",
+                  "componentSpecs": [{
+                    "spec": {
+                      "containers": [{
+                        "name": "classifier",
+                        "image": "${{ env.ECR_REGISTRY }}/prediction-service:${{ github.sha }}"
+                      }]
+                    }
+                  }],
+                  "traffic": 10
+                }
+              ]
+            }
+          }'
+
+      - name: Monitor canary metrics
+        run: |
+          sleep 300  # Monitor for 5 minutes
+          ERROR_RATE=$(kubectl exec -n crypto-monitoring prometheus-0 -- \
+            promtool query instant 'rate(prediction_errors_total[5m])' | grep -oP '\d+\.\d+')
+          if (( $(echo "$ERROR_RATE > 0.05" | bc -l) )); then
+            echo "Canary error rate too high: $ERROR_RATE"
+            exit 1
+          fi
+
+      - name: Promote canary to production
+        run: |
+          kubectl patch seldondeployment crypto-model-serving -n crypto-pipeline --type merge -p '
+          {
+            "spec": {
+              "predictors": [
+                {
+                  "name": "default",
+                  "componentSpecs": [{
+                    "spec": {
+                      "containers": [{
+                        "name": "classifier",
+                        "image": "${{ env.ECR_REGISTRY }}/prediction-service:${{ github.sha }}"
+                      }]
+                    }
+                  }],
+                  "traffic": 100
+                }
+              ]
+            }
+          }'
+
+      - name: Verify production deployment
+        run: |
+          kubectl wait --for=condition=Ready --timeout=600s \
+            pod -l seldon-app=crypto-model-serving -n crypto-pipeline
+          kubectl get pods -n crypto-pipeline
+
+      - name: Run smoke tests
+        run: |
+          PREDICTION_URL=$(kubectl get svc crypto-model-serving-default -n crypto-pipeline -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          curl -X POST "http://$PREDICTION_URL/api/v1.0/predictions" \
+            -H "Content-Type: application/json" \
+            -d '{"data": {"ndarray": [[1,2,3,4,5]]}}'
+
+      - name: Create release tag
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }}
+          body: |
+            ## Changes in this Release
+            - Commit: ${{ github.sha }}
+            - Branch: ${{ github.ref }}
+            - Build: ${{ github.run_number }}
+
+  # Job 7: Rollback on Failure
+  rollback:
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: failure()
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.CLUSTER_NAME }}
+
+      - name: Rollback deployment
+        run: |
+          kubectl rollout undo deployment/prediction-service -n crypto-pipeline
+          kubectl wait --for=condition=Available --timeout=300s \
+            deployment/prediction-service -n crypto-pipeline
+
+      - name: Notify team
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          text: 'Production deployment failed and was rolled back'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}

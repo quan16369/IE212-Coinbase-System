@@ -1,0 +1,158 @@
+apiVersion: machinelearning.seldon.io/v1
+kind: SeldonDeployment
+metadata:
+  name: crypto-model-serving
+  namespace: crypto-pipeline
+spec:
+  name: crypto-predictor
+  protocol: v2
+  predictors:
+  - name: default
+    replicas: 3
+    componentSpecs:
+    - spec:
+        containers:
+        - name: classifier
+          image: ${DOCKER_REGISTRY}/prediction-service:${VERSION}
+          imagePullPolicy: Always
+          env:
+          - name: MLFLOW_TRACKING_URI
+            value: "http://mlflow.crypto-mlops.svc.cluster.local:5000"
+          - name: MODEL_NAME
+            value: "crypto-lstm-model"
+          - name: MODEL_STAGE
+            value: "Production"
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          volumeMounts:
+          - name: model-cache
+            mountPath: /models
+        volumes:
+        - name: model-cache
+          emptyDir:
+            sizeLimit: 10Gi
+    graph:
+      name: classifier
+      type: MODEL
+      parameters:
+      - name: model_uri
+        type: STRING
+        value: "models:/crypto-lstm-model/Production"
+    explainer:
+      type: AnchorTabular
+      containerSpec:
+        name: explainer
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+    labels:
+      version: v1
+    svcOrchSpec:
+      env:
+      - name: SELDON_LOG_LEVEL
+        value: INFO
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "250m"
+    traffic: 100
+  - name: canary
+    replicas: 1
+    componentSpecs:
+    - spec:
+        containers:
+        - name: classifier
+          image: ${DOCKER_REGISTRY}/prediction-service:${CANARY_VERSION}
+          imagePullPolicy: Always
+          env:
+          - name: MLFLOW_TRACKING_URI
+            value: "http://mlflow.crypto-mlops.svc.cluster.local:5000"
+          - name: MODEL_NAME
+            value: "crypto-lstm-model"
+          - name: MODEL_STAGE
+            value: "Staging"
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          volumeMounts:
+          - name: model-cache
+            mountPath: /models
+        volumes:
+        - name: model-cache
+          emptyDir:
+            sizeLimit: 10Gi
+    graph:
+      name: classifier
+      type: MODEL
+      parameters:
+      - name: model_uri
+        type: STRING
+        value: "models:/crypto-lstm-model/Staging"
+    labels:
+      version: v2
+    traffic: 10  # Canary deployment: 10% traffic to new version
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: crypto-model-vs
+  namespace: crypto-pipeline
+spec:
+  hosts:
+  - crypto-model.example.com
+  gateways:
+  - istio-gateway
+  http:
+  - match:
+    - headers:
+        x-version:
+          exact: canary
+    route:
+    - destination:
+        host: crypto-model-serving-canary
+        port:
+          number: 8000
+  - route:
+    - destination:
+        host: crypto-model-serving-default
+        port:
+          number: 8000
+      weight: 90
+    - destination:
+        host: crypto-model-serving-canary
+        port:
+          number: 8000
+      weight: 10
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: crypto-model-dr
+  namespace: crypto-pipeline
+spec:
+  host: crypto-model-serving-default
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 2
+    loadBalancer:
+      simple: LEAST_REQUEST
+    outlierDetection:
+      consecutiveErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
