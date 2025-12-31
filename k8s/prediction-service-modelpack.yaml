@@ -1,0 +1,180 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crypto-predictor-modelpack
+  namespace: crypto-pipeline
+  labels:
+    app: crypto-predictor
+    version: modelpack
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: crypto-predictor
+      version: modelpack
+  template:
+    metadata:
+      labels:
+        app: crypto-predictor
+        version: modelpack
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Init container to extract model from OCI artifact
+      initContainers:
+      - name: model-loader
+        image: docker.io/yourregistry/crypto-lstm-btc:1.0.0
+        command: ['sh', '-c', 'cp -r /model/* /shared-model/']
+        volumeMounts:
+        - name: model
+          mountPath: /shared-model
+      
+      containers:
+      - name: predictor
+        image: prediction-service:latest
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        - containerPort: 9090
+          name: metrics
+          protocol: TCP
+        
+        env:
+        - name: MODEL_PATH
+          value: "/app/model/model.pt"
+        - name: CONFIG_PATH
+          value: "/app/model/config.yaml"
+        - name: MODEL_TYPE
+          value: "lstm_attention"
+        - name: DEVICE
+          value: "cpu"
+        - name: CASSANDRA_HOSTS
+          value: "cassandra"
+        - name: USE_PAIMON
+          value: "true"
+        - name: PAIMON_WAREHOUSE
+          value: "s3a://ie212-coinbase-data/paimon"
+        
+        volumeMounts:
+        - name: model
+          mountPath: /app/model
+          readOnly: true
+        
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      
+      volumes:
+      - name: model
+        emptyDir: {}
+      
+      # Alternative: Use OCI volume source (requires Kubernetes 1.31+)
+      # volumes:
+      # - name: model
+      #   image:
+      #     reference: docker.io/yourregistry/crypto-lstm-btc:1.0.0
+      #     pullPolicy: IfNotPresent
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crypto-predictor-modelpack
+  namespace: crypto-pipeline
+  labels:
+    app: crypto-predictor
+    version: modelpack
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  - port: 9090
+    targetPort: 9090
+    protocol: TCP
+    name: metrics
+  selector:
+    app: crypto-predictor
+    version: modelpack
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: crypto-predictor-modelpack-hpa
+  namespace: crypto-pipeline
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: crypto-predictor-modelpack
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  - type: Pods
+    pods:
+      metric:
+        name: prediction_latency_p95
+      target:
+        type: AverageValue
+        averageValue: "100m"  # 100ms
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+      - type: Pods
+        value: 2
+        periodSeconds: 60
+      selectPolicy: Max
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min
