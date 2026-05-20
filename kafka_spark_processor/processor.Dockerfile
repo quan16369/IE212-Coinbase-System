@@ -18,13 +18,13 @@ RUN mkdir -p /tmp/spark-ticker-checkpoint /tmp/spark-ticker-candles-checkpoint &
 # Copy Spark processor application
 COPY kafka_spark_processor/spark_processor.py .
 
-# Tạo script khởi động tối ưu
+# Create optimized startup script
 RUN echo '#!/bin/bash \n\
 \n\
 export SPARK_HOME=${SPARK_HOME:-/opt/spark} \n\
 export PATH=$SPARK_HOME/bin:$SPARK_HOME/sbin:$PATH \n\
 \n\
-echo "=== Thông tin cấu hình ===" \n\
+echo "=== Configuration ===" \n\
 echo "SPARK_HOME: $SPARK_HOME" \n\
 echo "PATH: $PATH" \n\
 echo "Kafka Host: ${KAFKA_HOST:-kafka}" \n\
@@ -32,33 +32,33 @@ echo "Kafka Port: ${KAFKA_PORT:-9092}" \n\
 echo "Cassandra Host: ${CASSANDRA_HOST:-cassandra}" \n\
 echo "Cassandra Port: ${CASSANDRA_PORT:-9042}" \n\
 \n\
-# Kiểm tra spark-submit \n\
+# Check spark-submit \n\
 SPARK_SUBMIT=$(which spark-submit || echo "$SPARK_HOME/bin/spark-submit") \n\
 if [ ! -f "$SPARK_SUBMIT" ]; then \n\
-  echo "CẢNH BÁO: Không tìm thấy spark-submit tại $SPARK_SUBMIT" \n\
-  echo "Tìm spark-submit trong hệ thống..." \n\
+  echo "WARNING: spark-submit was not found at $SPARK_SUBMIT" \n\
+  echo "Searching for spark-submit on the system..." \n\
   SPARK_SUBMIT=$(find / -name "spark-submit" -type f | head -1) \n\
   if [ -z "$SPARK_SUBMIT" ]; then \n\
-    echo "LỖI: Không thể tìm thấy spark-submit ở bất kỳ đâu!" \n\
+    echo "ERROR: Could not find spark-submit anywhere!" \n\
     exit 1 \n\
   fi \n\
 fi \n\
-echo "Sử dụng spark-submit tại: $SPARK_SUBMIT" \n\
+echo "Using spark-submit at: $SPARK_SUBMIT" \n\
 \n\
-# Kiểm tra kết nối Kafka \n\
-echo "=== Kiểm tra kết nối Kafka ===" \n\
+# Check Kafka connection \n\
+echo "=== Checking Kafka connection ===" \n\
 until nc -z ${KAFKA_HOST:-kafka} ${KAFKA_PORT:-9092} 2>/dev/null; do \n\
-  echo "Đang đợi Kafka..." \n\
+  echo "Waiting for Kafka..." \n\
   sleep 5 \n\
 done \n\
 \n\
-echo "=== Kiểm tra kết nối Cassandra ===" \n\
+echo "=== Checking Cassandra connection ===" \n\
 until nc -z ${CASSANDRA_HOST:-cassandra} ${CASSANDRA_PORT:-9042} 2>/dev/null; do \n\
-  echo "Đang đợi Cassandra..." \n\
+  echo "Waiting for Cassandra..." \n\
   sleep 5 \n\
 done \n\
 \n\
-echo "=== Khởi động ứng dụng Spark ===" \n\
+echo "=== Starting Spark application ===" \n\
 $SPARK_SUBMIT \\\n\
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5,org.apache.kafka:kafka-clients:3.9.0,com.datastax.spark:spark-cassandra-connector_2.12:3.5.1 \\\n\
   --conf spark.cassandra.connection.host=${CASSANDRA_HOST:-cassandra} \\\n\

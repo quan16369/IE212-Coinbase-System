@@ -45,6 +45,6 @@ class CNNLSTMModel(nn.Module):
         x = self.cnn(x)             # [batch, cnn_out_channels, seq_len]
         x = x.permute(0, 2, 1)      # [batch, seq_len, cnn_out_channels]
         lstm_out, _ = self.lstm(x)  # [batch, seq_len, lstm_hidden_dim]
-        last_output = lstm_out[:, -1, :]   # Lấy output cuối cùng
+        last_output = lstm_out[:, -1, :]   # Get the final output
         out = self.output_layer(last_output)       # [batch, pred_len]
         return out.unsqueeze(-1)                    # [batch, pred_len, 1]

@@ -9,7 +9,7 @@ import os
 logger = logging.getLogger(__name__)
 
 class CassandraClient:
-    """Client để kết nối và thao tác với Cassandra"""
+    """Client for connecting to and working with Cassandra."""
     
     def __init__(self, 
                  hosts: List[str] = None,
@@ -35,7 +35,7 @@ class CassandraClient:
         self._connect()
     
     def _connect(self, max_retries: int = 10, retry_delay: int = 5):
-        """Kết nối đến Cassandra với retry logic"""
+        """Connect to Cassandra with retry logic."""
         for attempt in range(max_retries):
             try:
                 logger.info(f"Attempting to connect to Cassandra (attempt {attempt + 1}/{max_retries})")
@@ -69,7 +69,7 @@ class CassandraClient:
                     raise ConnectionError(f"Failed to connect to Cassandra after {max_retries} attempts")
     
     def execute_query(self, query: str, parameters: tuple = None) -> Any:
-        """Thực thi query với error handling"""
+        """Execute a query with error handling."""
         try:
             if parameters:
                 return self.session.execute(query, parameters)
@@ -79,7 +79,7 @@ class CassandraClient:
             raise
     
     def execute_batch(self, statements: List[tuple]) -> None:
-        """Thực thi batch statements"""
+        """Execute batch statements."""
         from cassandra.query import BatchStatement
         try:
             batch = BatchStatement()
@@ -98,7 +98,7 @@ class CassandraClient:
             raise
     
     def prepare_statement(self, query: str):
-        """Prepare statement để tăng hiệu suất"""
+        """Prepare a statement for better performance."""
         try:
             return self.session.prepare(query)
         except Exception as e:
@@ -106,13 +106,13 @@ class CassandraClient:
             raise
     
     def get_session(self) -> Session:
-        """Lấy session để sử dụng trực tiếp"""
+        """Get the session for direct use."""
         if not self.session:
             self._connect()
         return self.session
     
     def close(self):
-        """Đóng kết nối"""
+        """Close the connection."""
         if self.cluster:
             self.cluster.shutdown()
             logger.info("Cassandra connection closed")
@@ -124,7 +124,7 @@ class CassandraClient:
         self.close()
 
     def health_check(self) -> bool:
-        """Kiểm tra sức khỏe kết nối"""
+        """Check connection health."""
         try:
             result = self.session.execute("SELECT release_version FROM system.local")
             return result is not None

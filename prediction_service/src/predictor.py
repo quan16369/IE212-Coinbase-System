@@ -10,12 +10,12 @@ import sys
 import os
 from pathlib import Path
 
-# Add model source path TRƯỚC KHI import
+# Add model source path before imports
 current_dir = Path(__file__).parent
 model_src_path = current_dir.parent / 'model' / 'src'
 sys.path.append(str(model_src_path))
 
-# Import tất cả model classes
+# Import all model classes
 MODEL_CLASSES = {}
 try:
     from lstm_model import LSTMModel
@@ -52,7 +52,7 @@ except ImportError as e:
         raise
 
 class CryptoPricePredictor:
-    """Class thực hiện dự đoán giá tiền điện tử - SỬ DỤNG CÙNG LOGIC VỚI NOTEBOOK 16.ipynb"""
+    """Run crypto price prediction using the same logic as notebook 16.ipynb."""
     
     def __init__(self, 
                  model_config_path: str,
@@ -61,17 +61,17 @@ class CryptoPricePredictor:
         
         self.device = torch.device(device or ('cuda' if torch.cuda.is_available() else 'cpu'))
         
-        # Load config - GIỐNG NOTEBOOK 16
+        # Load config, matching notebook 16
         with open(model_config_path, 'r') as f:
             self.config = yaml.safe_load(f)
         
         # Validate config structure
         self._validate_config()
         
-        # Load model - GIỐNG NOTEBOOK 16
+        # Load model, matching notebook 16
         self.model = self._load_model(model_checkpoint_path)
         
-        # Scalers sẽ được set từ bên ngoài (từ CryptoDataset)
+        # Scalers are set externally from CryptoDataset
         self.scalers = None
         
         logger.info(f"Predictor initialized on device: {self.device}")
@@ -99,7 +99,7 @@ class CryptoPricePredictor:
         logger.info(f"  d_model: {self.config['model']['d_model']}")
     
     def _load_model(self, checkpoint_path: str):
-        """Load model từ checkpoint - COPY TỪNG DÒNG TỪ NOTEBOOK 16"""
+        """Load model from checkpoint, matching notebook 16 line-by-line."""
         try:
             # Get model type from config
             model_type = self.config['model'].get('model_type', 'lstm').lower()
@@ -113,13 +113,13 @@ class CryptoPricePredictor:
                 logger.warning(f"Model type '{model_type}' not found, using default LSTM")
                 model_class = MODEL_CLASSES.get('lstm', LSTMModel)
             
-            # Khởi tạo model - GIỐNG NOTEBOOK 16
+            # Initialize model, matching notebook 16
             model = model_class(self.config).to(self.device)
             
-            # Load weights với proper error handling
+            # Load weights with proper error handling
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
             
-            # Xử lý các định dạng checkpoint khác nhau - GIỐNG NOTEBOOK 16
+            # Handle different checkpoint formats, matching notebook 16
             if 'model_state_dict' in checkpoint:
                 state_dict = checkpoint['model_state_dict']
                 logger.info("Loading from model_state_dict")
@@ -150,7 +150,7 @@ class CryptoPricePredictor:
                 
                 logger.info("Model loaded with strict=False - some parameters may be randomly initialized")
             
-            model.eval()  # QUAN TRỌNG: Set eval mode
+            model.eval()  # Important: set eval mode
             
             logger.info(f"Model loaded successfully from {checkpoint_path}")
             logger.info(f"Model parameters: {sum(p.numel() for p in model.parameters())}")
@@ -165,17 +165,17 @@ class CryptoPricePredictor:
             raise
     
     def set_scalers(self, scalers: Dict):
-        """Set scalers từ CryptoDataset"""
+        """Set scalers from CryptoDataset."""
         self.scalers = scalers
         logger.info("Scalers set successfully")
     
     def predict(self, df_processed: pd.DataFrame, scalers: Dict = None) -> Tuple[np.ndarray, List[datetime]]:
         """
-        Thực hiện dự đoán - LOGIC GIỐNG NOTEBOOK 16.ipynb
+        Run prediction using logic matching notebook 16.ipynb.
         
         Args:
-            df_processed: DataFrame đã được xử lý bằng CryptoDataset (có tất cả features)
-            scalers: Scalers từ CryptoDataset
+            df_processed: DataFrame processed with CryptoDataset, including all features
+            scalers: Scalers from CryptoDataset
             
         Returns:
             Tuple of (predictions, target_timestamps)
@@ -193,23 +193,23 @@ class CryptoPricePredictor:
             if len(df_processed) < seq_len:
                 raise ValueError(f"Insufficient data: need {seq_len}, got {len(df_processed)}")
             
-            # Lấy sequence mới nhất
+            # Take the latest sequence
             recent_data = df_processed.tail(seq_len).copy()
             
-            # Scale data - SỬ DỤNG CÙNG LOGIC VỚI CryptoDataset
+            # Scale data using the same logic as CryptoDataset
             scaled_data = self._scale_data_like_dataset(recent_data)
             
-            # Tạo tensor - GIỐNG NOTEBOOK 16
+            # Create tensor, matching notebook 16
             x = torch.FloatTensor(scaled_data).unsqueeze(0).to(self.device)  # [1, seq_len, features]
             
-            # Prediction - GIỐNG NOTEBOOK 16
+            # Prediction, matching notebook 16
             with torch.no_grad():
-                pred = self.model(x)  # Model output shape tùy thuộc vào model type
+                pred = self.model(x)  # Model output shape depends on model type
                 
                 # Handle different output shapes
                 if len(pred.shape) == 3:  # [batch, pred_len, 1]
                     pred = pred.squeeze(-1)  # [batch, pred_len]
-                pred = pred.squeeze(0).cpu().numpy()  # [pred_len] hoặc scalar
+                pred = pred.squeeze(0).cpu().numpy()  # [pred_len] or scalar
                 
                 # Ensure pred is array
                 if np.isscalar(pred):
@@ -217,10 +217,10 @@ class CryptoPricePredictor:
                 elif len(pred.shape) == 0:
                     pred = np.array([pred.item()])
             
-            # DENORMALIZE predictions về giá USD thực
+            # Denormalize predictions back to real USD prices
             pred_denormalized = self._denormalize_predictions(pred, recent_data)
             
-            # Tạo target timestamps
+            # Create target timestamps
             last_timestamp = recent_data.index[-1]
             target_timestamps = []
             for i in range(len(pred_denormalized)):
@@ -238,15 +238,15 @@ class CryptoPricePredictor:
     
     def _denormalize_predictions(self, scaled_predictions: np.ndarray, recent_data: pd.DataFrame) -> np.ndarray:
         """
-        Denormalize predictions từ scaled values về USD thực
+        Denormalize predictions from scaled values back to real USD.
         """
         try:
-            # Method 1: Sử dụng close price scaler để denormalize
+            # Method 1: Use the close price scaler to denormalize
             if 'price' in self.scalers and hasattr(self.scalers['price'], 'center_') and hasattr(self.scalers['price'], 'scale_'):
                 # RobustScaler: X_scaled = (X - center_) / scale_
                 # X = X_scaled * scale_ + center_
                 
-                # Lấy close price index trong price scaler
+                # Get close price index in the price scaler
                 price_cols = ['open', 'high', 'low', 'close', 'price_ma_ratio', 'price_spread']
                 if 'close' in price_cols:
                     close_idx = price_cols.index('close')
@@ -258,10 +258,10 @@ class CryptoPricePredictor:
                         logger.info(f"Denormalized using RobustScaler: center={center:.2f}, scale={scale:.2f}")
                         return denormalized
             
-            # Method 2: Fallback - sử dụng recent price làm reference
+            # Method 2: Fallback - use recent price as reference
             last_price = recent_data['close'].iloc[-1]
             
-            # Giả định scaled prediction trong khoảng [-3, 3] tương ứng với ±20% price change
+            # Assume scaled predictions in [-3, 3] correspond to +/-20% price change
             price_change_factor = 0.2  # 20% max change
             max_scaled_value = 3.0
             
@@ -278,17 +278,17 @@ class CryptoPricePredictor:
             return scaled_predictions
     
     def predict_single_step(self, df_processed: pd.DataFrame, scalers: Dict = None) -> Tuple[float, datetime]:
-        """Dự đoán 1 bước tiếp theo"""
+        """Predict the next single step."""
         pred, timestamps = self.predict(df_processed, scalers)
         return float(pred[0]), timestamps[0]
     
     def _scale_data_like_dataset(self, df: pd.DataFrame) -> np.ndarray:
         """
-        Scale dữ liệu giống như trong CryptoDataset._scale_data()
-        SỬ DỤNG LẠI LOGIC TỪ data_loader.py
+        Scale data like CryptoDataset._scale_data().
+        Reuse logic from data_loader.py.
         """
         try:
-            # Feature groups - GIỐNG TRONG data_loader.py
+            # Feature groups, matching data_loader.py
             price_cols = ['open', 'high', 'low', 'close', 'price_ma_ratio', 'price_spread']
             volume_cols = ['volume', 'volume_zscore', 'volume_ma_ratio', 'liquidity']
             indicator_cols = ['rsi', 'macd', 'atr', 'obv', 'log_returns'] + \
@@ -296,12 +296,12 @@ class CryptoPricePredictor:
                             ['momentum_3_6', 'momentum_6_12']
             time_cols = ['hour_sin', 'hour_cos', 'dow_sin', 'dow_cos', 'is_weekend', 'is_market_open']
             
-            # Feature names theo thứ tự - GIỐNG data_loader.py
+            # Feature names in order, matching data_loader.py
             feature_names = price_cols + volume_cols + indicator_cols + time_cols
             
             scaled_data = pd.DataFrame(index=df.index)
             
-            # Scale từng nhóm - GIỐNG data_loader.py
+            # Scale each group, matching data_loader.py
             available_price_cols = [col for col in price_cols if col in df.columns]
             available_volume_cols = [col for col in volume_cols if col in df.columns]
             available_indicator_cols = [col for col in indicator_cols if col in df.columns]
@@ -316,7 +316,7 @@ class CryptoPricePredictor:
             if available_time_cols:
                 scaled_data[available_time_cols] = self.scalers['time'].transform(df[available_time_cols])
             
-            # Đảm bảo thứ tự features đúng - GIỐNG data_loader.py
+            # Ensure the correct feature order, matching data_loader.py
             feature_data = []
             for feature_name in feature_names:
                 if feature_name in scaled_data.columns:
@@ -334,7 +334,7 @@ class CryptoPricePredictor:
             raise
     
     def get_model_info(self) -> Dict[str, Any]:
-        """Lấy thông tin về model"""
+        """Get model information."""
         return {
             'model_type': self.config['model'].get('model_type', 'lstm'),
             'seq_len': self.config['model']['seq_len'],
@@ -344,7 +344,7 @@ class CryptoPricePredictor:
         }
     
     def validate_input_data(self, df: pd.DataFrame) -> bool:
-        """Kiểm tra tính hợp lệ của input data"""
+        """Validate input data."""
         try:
             required_cols = ['open', 'high', 'low', 'close', 'volume']
             missing_cols = [col for col in required_cols if col not in df.columns]
@@ -353,12 +353,12 @@ class CryptoPricePredictor:
                 logger.error(f"Missing required columns: {missing_cols}")
                 return False
             
-            # Kiểm tra NaN values
+            # Check NaN values
             if df[required_cols].isnull().any().any():
                 logger.warning("Found NaN values in required columns")
                 return False
             
-            # Kiểm tra độ dài dữ liệu
+            # Check data length
             min_required = self.config['model']['seq_len']
             if len(df) < min_required:
                 logger.error(f"Insufficient data: need {min_required}, got {len(df)}")

@@ -39,6 +39,8 @@ The data also flows into cryptocurrency predicting model from the Database, expe
 </p>
 
 Install Docker Desktop. After that, run: docker-compose up -d
+
+For Jenkins CI/CD, monitoring, logs, migrations, and backup/restore, see [OPERATIONS.md](OPERATIONS.md).
 ## Future Work
 * Perform code cleanup and integration testing
 * Deploy to EKS
@@ -50,7 +52,6 @@ Install Docker Desktop. After that, run: docker-compose up -d
 
 
 ![Screenshot 2025-05-28 215935](https://github.com/user-attachments/assets/75c04d07-2d63-44bd-9a3c-6bc1ae967ea2)
-
 
 
 

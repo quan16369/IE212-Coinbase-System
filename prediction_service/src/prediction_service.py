@@ -58,7 +58,7 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 class PredictionService:
-    """Service chính để thực hiện dự đoán giá tiền điện tử theo thời gian thực"""
+    """Main service for real-time cryptocurrency price prediction."""
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
@@ -85,7 +85,7 @@ class PredictionService:
         logger.info("PredictionService initialized successfully")
     
     def _init_cassandra(self):
-        """Khởi tạo Cassandra client"""
+        """Initialize Cassandra client."""
         try:
             cassandra_hosts = self.config.get('cassandra_hosts', ['localhost'])
             if isinstance(cassandra_hosts, str):
@@ -107,7 +107,7 @@ class PredictionService:
             raise
     
     def _init_predictor(self):
-        """Khởi tạo predictor"""
+        """Initialize predictor."""
         try:
             model_config_path = self.config.get('model_config_path')
             model_checkpoint_path = self.config.get('model_checkpoint_path')
@@ -129,7 +129,7 @@ class PredictionService:
             raise
     
     def _init_data_components(self):
-        """Khởi tạo data fetcher và writer"""
+        """Initialize data fetcher and writer."""
         try:
             self.data_fetcher = CryptoDataFetcher(self.cassandra_client)
             self.data_writer = PredictionDataWriter(self.cassandra_client)
@@ -141,7 +141,7 @@ class PredictionService:
             raise
     
     def _get_or_create_scalers(self, product_id: str):
-        """Lấy hoặc tạo scalers cho một product"""
+        """Get or create scalers for a product."""
         if product_id not in self.product_scalers:
             logger.info(f"Creating scalers for {product_id}")
             scalers = self.data_fetcher.create_scalers_from_historical_data(
@@ -160,61 +160,61 @@ class PredictionService:
     
     def predict_for_product(self, product_id: str) -> bool:
         """
-        Thực hiện dự đoán cho một sản phẩm cụ thể - SỬ DỤNG CryptoDataset
+        Run prediction for a specific product using CryptoDataset.
         
         Args:
-            product_id: ID của sản phẩm (VD: BTC-USD)
+            product_id: Product ID (for example: BTC-USD)
             
         Returns:
-            bool: True nếu thành công
+            bool: True if successful
         """
         try:
             logger.info(f"Starting prediction for {product_id}")
             
-            # Lấy hoặc tạo scalers cho product này
+            # Get or create scalers for this product
             scalers = self._get_or_create_scalers(product_id)
             if not scalers:
                 logger.error(f"Cannot get scalers for {product_id} - skipping prediction")
                 return False
             
-            # Lấy dữ liệu mới nhất và xử lý bằng CryptoDataset
+            # Fetch the latest data and process it with CryptoDataset
             df_processed = self.data_fetcher.get_latest_data_for_prediction(
                 product_id=product_id,
                 seq_len=self.predictor.config['model']['seq_len'],
                 config=self.predictor.config,
-                existing_scalers=scalers  # Pass scalers đã fit
+                existing_scalers=scalers  # Pass fitted scalers
             )
             
             if df_processed.empty:
                 logger.warning(f"No processed data available for {product_id}")
                 return False
             
-            # Validate dữ liệu
+            # Validate data
             if not self.predictor.validate_input_data(df_processed):
                 logger.error(f"Invalid input data for {product_id}")
                 return False
             
-            # Thực hiện dự đoán - GIỐNG NOTEBOOK 16
+            # Run prediction, matching notebook 16
             predictions, target_timestamps = self.predictor.predict(df_processed, scalers)
             
             # Log both scaled and USD values for debugging
             logger.info(f"Predictions shape: {predictions.shape}")
             logger.info(f"First prediction value: {predictions[0]:.2f}")
             
-            # Ghi kết quả vào database - SỬ DỤNG GIÁ TRỊ ĐÃ DENORMALIZED
+            # Write results to the database using already-denormalized values
             success = self.data_writer.write_predictions(
                 product_id=product_id,
                 model_name=self.model_name,
-                predictions=predictions.tolist(),  # Đã là USD values
+                predictions=predictions.tolist(),  # Already USD values
                 target_timestamps=target_timestamps,
-                confidence_intervals=None,  # Có thể thêm sau
+                confidence_intervals=None,  # Can be added later
                 model_version=self.config.get('model_version', '1.0'),
                 metadata=json.dumps({
                     'data_points_used': len(df_processed),
                     'last_price': float(df_processed['close'].iloc[-1]),
                     'prediction_method': 'dataset_reuse',
                     'features_count': df_processed.shape[1],
-                    'denormalized': True  # Flag để biết đã denormalize
+                    'denormalized': True  # Flag indicating values were denormalized
                 })
             )
             
@@ -242,7 +242,7 @@ class PredictionService:
             return False
     
     def prediction_worker(self, product_id: str):
-        """Worker thread cho việc dự đoán một sản phẩm"""
+        """Worker thread for predicting one product."""
         logger.info(f"Starting prediction worker for {product_id}")
         
         retry_count = 0
@@ -251,7 +251,7 @@ class PredictionService:
         
         while self.running:
             try:
-                # Thực hiện dự đoán
+                # Run prediction
                 success = self.predict_for_product(product_id)
                 
                 if success:
@@ -274,7 +274,7 @@ class PredictionService:
                 time.sleep(60)  # Wait 1 minute on unexpected errors
     
     def start(self):
-        """Bắt đầu service"""
+        """Start the service."""
         if self.running:
             logger.warning("Service is already running")
             return
@@ -282,11 +282,11 @@ class PredictionService:
         logger.info("Starting PredictionService...")
         self.running = True
         
-        # Kiểm tra kết nối trước khi bắt đầu
+        # Check connections before starting
         if not self._health_check():
             raise Exception("Health check failed - cannot start service")
         
-        # Khởi tạo threads cho từng product
+        # Initialize one thread per product
         for product_id in self.product_ids:
             thread = threading.Thread(
                 target=self.prediction_worker,
@@ -297,13 +297,13 @@ class PredictionService:
             thread.start()
             self.prediction_threads[product_id] = thread
             
-            # Stagger startup để tránh tải đồng thời
+            # Stagger startup to avoid simultaneous load
             time.sleep(5)
         
         logger.info(f"PredictionService started with {len(self.prediction_threads)} prediction threads")
     
     def stop(self):
-        """Dừng service"""
+        """Stop the service."""
         if not self.running:
             logger.warning("Service is not running")
             return
@@ -311,37 +311,37 @@ class PredictionService:
         logger.info("Stopping PredictionService...")
         self.running = False
         
-        # Chờ các threads kết thúc
+        # Wait for threads to stop
         for product_id, thread in self.prediction_threads.items():
             logger.info(f"Waiting for {product_id} prediction thread to stop...")
             thread.join(timeout=30)
         
-        # Đóng kết nối Cassandra
+        # Close Cassandra connection
         self.cassandra_client.close()
         
         logger.info("PredictionService stopped")
     
     def _health_check(self) -> bool:
-        """Kiểm tra sức khỏe của service"""
+        """Check service health."""
         try:
-            # Kiểm tra kết nối Cassandra
+            # Check Cassandra connection
             if not self.cassandra_client.health_check():
                 logger.error("Cassandra health check failed")
                 return False
             
-            # Kiểm tra model
+            # Check model
             model_info = self.predictor.get_model_info()
             if not model_info:
                 logger.error("Model health check failed")
                 return False
             
-            # Kiểm tra dữ liệu có sẵn
+            # Check available data
             available_products = self.data_fetcher.get_available_products()
             missing_products = [p for p in self.product_ids if p not in available_products]
             
             if missing_products:
                 logger.warning(f"Some products not available in database: {missing_products}")
-                # Không fail hoàn toàn, chỉ warning
+                # Do not fail completely; only warn
             
             logger.info("Health check passed")
             return True
@@ -351,7 +351,7 @@ class PredictionService:
             return False
     
     def get_status(self) -> Dict[str, Any]:
-        """Lấy trạng thái hiện tại của service"""
+        """Get current service status."""
         return {
             'running': self.running,
             'product_ids': self.product_ids,
@@ -371,7 +371,7 @@ class PredictionService:
         }
     
     def force_prediction(self, product_id: Optional[str] = None) -> Dict[str, bool]:
-        """Buộc thực hiện dự đoán ngay lập tức"""
+        """Force prediction immediately."""
         results = {}
         
         if product_id:
@@ -388,7 +388,7 @@ class PredictionService:
         return results
 
 def create_service_from_env() -> PredictionService:
-    """Tạo service từ environment variables"""
+    """Create service from environment variables."""
     config = {
         'cassandra_hosts': os.getenv('CASSANDRA_HOSTS', 'localhost').split(','),
         'cassandra_port': int(os.getenv('CASSANDRA_PORT', '9042')),
@@ -404,7 +404,7 @@ def create_service_from_env() -> PredictionService:
     
     return PredictionService(config)
 
-# Health check endpoint cho Docker
+# Health check endpoint for Docker
 def health_check_endpoint():
     """Simple health check for Docker"""
     try:
@@ -422,7 +422,7 @@ def health_check_endpoint():
         return None
 
 def main():
-    """Main function để chạy service"""
+    """Main function for running the service."""
     import argparse
     
     parser = argparse.ArgumentParser(description='Crypto Price Prediction Service')

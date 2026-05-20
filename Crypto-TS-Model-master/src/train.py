@@ -28,7 +28,7 @@ from torch.optim.swa_utils import AveragedModel, SWALR
 import math
 from sklearn.model_selection import TimeSeriesSplit
 
-# Cấu hình logging và suppress warnings
+# Configure logging and suppress warnings
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -207,19 +207,19 @@ def train(config_path: str = 'configs/train_config.yaml'):
             config_dict = yaml.safe_load(f)
         config = TrainConfig(config_dict)
 
-        # 2. Khởi tạo hệ thống
+        # 2. Initialize system
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         tracker = TrainingTracker(config_dict)
         stopper = EarlyStopper(config_dict)
         scaler = torch.cuda.amp.GradScaler(enabled=config.use_amp)
 
-        # 3. Chuẩn bị dữ liệu
+        # 3. Prepare data
         logger.info("Loading data...")
         data_loader = CryptoDataLoader(config_path=config_path)
         train_loader = data_loader.train_loader
         val_loader = data_loader.test_loader
 
-        # 4. Khởi tạo model
+        # 4. Initialize model
         model_type = config_dict['model'].get('model_type', 'lstm').lower()
         if model_type == 'lstm_attention':
             model = LSTMAttentionModel(config_dict).to(config.device)
@@ -235,7 +235,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
             model = LSTMModel(config_dict).to(config.device)
         logger.info(f"Using model: {model_type}")
 
-        # 5. Khởi tạo loss function
+        # 5. Initialize loss function
         if config.loss_fn.lower() == "huber":
             loss_fn = AdaptiveHuberLoss(initial_delta=config.huber_delta)
             logger.info(f"Using HuberLoss with initial delta={config.huber_delta}")
@@ -254,7 +254,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
             )
             logger.info("Using CompositeLoss (MSE + Quantile)")
 
-        # 6. Tối ưu hóa
+        # 6. Optimization
         optimizer = AdamW(
             model.parameters(),
             lr=config.lr,
@@ -262,7 +262,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
             weight_decay=1e-3
         )
         
-        # 7. Thiết lập scheduler
+        # 7. Set up scheduler
         total_steps = len(train_loader) * config.epochs
         warmup_steps = len(train_loader) * config.warmup_epochs
         
@@ -284,7 +284,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
             )
             swa = None
 
-        # 8. Resume training nếu có
+        # 8. Resume training if available
         start_epoch = 0
         best_loss = float('inf')
         checkpoint_path = None
@@ -303,7 +303,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
             best_loss = checkpoint.get('best_loss', float('inf'))
             logger.info(f"Resumed training from epoch {start_epoch}")
 
-        # 9. Vòng lặp training
+        # 9. Training loop
         train_losses = []
         val_losses = []
         
@@ -313,7 +313,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
             epoch_loss = 0
             optimizer.zero_grad()
             
-            # Training phase với gradient accumulation
+            # Training phase with gradient accumulation
             with tqdm(train_loader, unit="batch", desc=f"Epoch {epoch+1}/{config.epochs}") as tepoch:
                 for i, batch in enumerate(tepoch):
                     x = batch['x'].to(config.device)
@@ -324,7 +324,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
                         pred = model(x)
                         loss = loss_fn(pred, y) / config.grad_accum_steps
                     
-                    # Backward với gradient scaling
+                    # Backward with gradient scaling
                     scaler.scale(loss).backward()
                     
                     if (i + 1) % config.grad_accum_steps == 0 or (i + 1) == len(train_loader):
@@ -335,7 +335,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
                             max_norm= 1.0
                         )
                         
-                        # Cập nhật weights
+                        # Update weights
                         scaler.step(optimizer)
                         scaler.update()
                         optimizer.zero_grad()
@@ -351,11 +351,11 @@ def train(config_path: str = 'configs/train_config.yaml'):
             train_losses.append(avg_train_loss)
             val_losses.append(val_loss)
 
-            # Cập nhật SWA nếu được kích hoạt
+            # Update SWA if enabled
             if config.use_swa:
                 swa.update(model, epoch)
 
-            # Cập nhật delta cho Huber Loss
+            # Update delta for Huber Loss
             if isinstance(loss_fn, AdaptiveHuberLoss):
                 with torch.no_grad():
                     preds = model(torch.cat([b['x'] for b in train_loader], dim=0).to(config.device))
@@ -374,7 +374,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
                       f"Train Loss: {avg_train_loss:.4f} | Val Loss: {val_loss:.4f} | "
                       f"LR: {optimizer.param_groups[0]['lr']:.2e}")
 
-            # Lưu checkpoint
+            # Save checkpoint
             if epoch % config.checkpoint_interval == 0 or val_loss < best_loss:
                 if val_loss < best_loss:
                     best_loss = val_loss
@@ -409,7 +409,7 @@ def train(config_path: str = 'configs/train_config.yaml'):
         else:
             torch.save(model.state_dict(), f"final_model_{timestamp}.pt")
 
-        # Visualize kết quả
+        # Visualize results
         plt.figure(figsize=(10, 6))
         plt.plot(train_losses, label='Training Loss', color='blue')
         plt.plot(val_losses, label='Validation Loss', color='red')
@@ -439,19 +439,19 @@ if __name__ == "__main__":
 #             config_dict = yaml.safe_load(f)
 #         config = TrainConfig(config_dict)
 
-#         # 2. Khởi tạo hệ thống
+#         # 2. Initialize system
 #         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 #         tracker = TrainingTracker(config_dict)
 #         stopper = EarlyStopper(config_dict)
 #         scaler = torch.cuda.amp.GradScaler(enabled=config.use_amp)
 
-#         # 3. Chuẩn bị dữ liệu
+#         # 3. Prepare data
 #         logger.info("Loading data...")
 #         data_loader = CryptoDataLoader(config_path=config_path)
 #         train_loader = data_loader.train_loader
 #         val_loader = data_loader.test_loader
 
-#         # 4. Khởi tạo model
+#         # 4. Initialize model
 #         model_type = config_dict['model'].get('model_type', 'lstm').lower()
 #         if model_type == 'lstm_attention':
 #             model = LSTMAttentionModel(config_dict).to(config.device)
@@ -467,7 +467,7 @@ if __name__ == "__main__":
 #             model = LSTMModel(config_dict).to(config.device)
 #         logger.info(f"Using model: {model_type}")
 
-#         # 5. Khởi tạo loss function
+#         # 5. Initialize loss function
 #         if config.loss_fn.lower() == "huber":
 #             loss_fn = AdaptiveHuberLoss(initial_delta=config.huber_delta)
 #             logger.info(f"Using HuberLoss with initial delta={config.huber_delta}")
@@ -486,7 +486,7 @@ if __name__ == "__main__":
 #             )
 #             logger.info("Using CompositeLoss (MSE + Quantile)")
 
-#         # 6. Tối ưu hóa
+#         # 6. Optimization
 #         optimizer = AdamW(
 #             model.parameters(),
 #             lr=config.lr,
@@ -504,10 +504,10 @@ if __name__ == "__main__":
 #             final_div_factor=100
 #         )
 
-#         # 7. Khởi tạo EMA
+#         # 7. Initialize EMA
 #         ema = ModelEMA(model, decay=config.ema_decay)
 
-#         # 8. Resume training nếu có
+#         # 8. Resume training if available
 #         start_epoch = 0
 #         best_loss = float('inf')
 #         checkpoint_path = None
@@ -526,7 +526,7 @@ if __name__ == "__main__":
 #             best_loss = checkpoint.get('best_loss', float('inf'))
 #             logger.info(f"Resumed training from epoch {start_epoch}")
 
-#         # 9. Vòng lặp training
+#         # 9. Training loop
 #         train_losses = []
 #         val_losses = []
         
@@ -536,7 +536,7 @@ if __name__ == "__main__":
 #             epoch_loss = 0
 #             optimizer.zero_grad()
             
-#             # 9.1 Training phase với gradient accumulation
+#             # 9.1 Training phase with gradient accumulation
 #             with tqdm(train_loader, unit="batch", desc=f"Epoch {epoch+1}/{config.epochs}") as tepoch:
 #                 for i, batch in enumerate(tepoch):
 #                     x = batch['x'].to(config.device)
@@ -556,7 +556,7 @@ if __name__ == "__main__":
                         
 #                         loss = loss_fn(pred, y) / config.grad_accum_steps
                     
-#                     # Backward với gradient scaling
+#                     # Backward with gradient scaling
 #                     scaler.scale(loss).backward()
                     
 #                     if (i + 1) % config.grad_accum_steps == 0 or (i + 1) == len(train_loader):
@@ -567,13 +567,13 @@ if __name__ == "__main__":
 #                             max_norm=0.5 * (1 + epoch/config.epochs)
 #                         )
                         
-#                         # Cập nhật weights
+#                         # Update weights
 #                         scaler.step(optimizer)
 #                         scaler.update()
 #                         optimizer.zero_grad()
 #                         scheduler.step()
                         
-#                         # Cập nhật EMA
+#                         # Update EMA
 #                         ema.update(model)
                     
 #                     epoch_loss += loss.item() * config.grad_accum_steps
@@ -582,11 +582,11 @@ if __name__ == "__main__":
 #             # 9.2 Evaluation phase
 #             avg_train_loss = epoch_loss / len(train_loader)
             
-#             # Validate với cả model và EMA model
+#             # Validate both model and EMA model
 #             val_loss = evaluate(model, val_loader, config.device, loss_fn)
 #             ema_val_loss = evaluate(ema.module, val_loader, config.device, loss_fn)
             
-#             # Chọn model tốt hơn
+#             # Select the better model
 #             if ema_val_loss < val_loss:
 #                 model.load_state_dict(ema.module.state_dict())
 #                 val_loss = ema_val_loss
@@ -595,7 +595,7 @@ if __name__ == "__main__":
 #             train_losses.append(avg_train_loss)
 #             val_losses.append(val_loss)
 
-#             # 9.3 Cập nhật delta cho Huber Loss
+#             # 9.3 Update delta for Huber Loss
 #             if isinstance(loss_fn, AdaptiveHuberLoss):
 #                 with torch.no_grad():
 #                     preds = model(torch.cat([b['x'] for b in train_loader], dim=0).to(config.device))
@@ -614,7 +614,7 @@ if __name__ == "__main__":
 #                       f"Train Loss: {avg_train_loss:.4f} | Val Loss: {val_loss:.4f} | "
 #                       f"LR: {optimizer.param_groups[0]['lr']:.2e}")
 
-#             # 9.5 Lưu checkpoint
+#             # 9.5 Save checkpoint
 #             if epoch % config.checkpoint_interval == 0 or val_loss < best_loss:
 #                 if val_loss < best_loss:
 #                     best_loss = val_loss
@@ -639,7 +639,7 @@ if __name__ == "__main__":
 #                 logger.info(f"Early stopping triggered at epoch {epoch+1}")
 #                 break
 
-#         # 10. Visualize kết quả
+#         # 10. Visualize results
 #         plt.figure(figsize=(10, 6))
 #         plt.plot(train_losses, label='Training Loss', color='blue')
 #         plt.plot(val_losses, label='Validation Loss', color='red')

@@ -9,13 +9,13 @@ from torch import nn
 import torch.nn.functional as F
 
 def seed_everything(seed: int = 42):
-    """Cố định seed cho tất cả thư viện"""
+    """Set a fixed seed for all libraries."""
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
 
 class TrainingTracker:
-    """Theo dõi quá trình training"""
+    """Track the training process."""
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
@@ -24,16 +24,16 @@ class TrainingTracker:
         self._save_config()
 
     def _save_config(self):
-        """Lưu config vào thư mục log"""
+        """Save config into the log directory."""
         with open(Path(self.writer.log_dir) / "config.yaml", 'w') as f:
             yaml.dump(self.config, f)
 
     def log(self, tag: str, value: float, step: int):
-        """Ghi log metrics"""
+        """Log metrics."""
         self.writer.add_scalar(tag, value, step)
 
     def close(self):
-        """Đóng SummaryWriter"""
+        """Close the SummaryWriter."""
         self.writer.close()
 
 class EarlyStopper:

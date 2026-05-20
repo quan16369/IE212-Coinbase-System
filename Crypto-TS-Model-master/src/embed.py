@@ -35,18 +35,18 @@ class VolatilityEmbedding(nn.Module):
     def forward(self, x_close):  # x_close: [B,T,1]
         B, T, _ = x_close.shape
         
-        # 1. Tính returns với padding đầu
+        # 1. Compute returns with front padding
         returns = F.pad(x_close.diff(dim=1).abs(), (0,0,1,0), value=0)  # [B,T,1]
         
-        # 2. Tính rolling volatility
+        # 2. Compute rolling volatility
         volatility = returns.unfold(1, self.lookback, 1).std(dim=-1, keepdim=True)  # [B,T-lookback+1,1]
         
-        # 3. Padding đối xứng chính xác để giữ nguyên kích thước
+        # 3. Exact symmetric padding to keep the original size
         pad_front = (self.lookback - 1) // 2
         pad_back = (self.lookback - 1) // 2
         volatility = F.pad(volatility, (0,0,pad_front,pad_back), mode='replicate')  # [B,T,1]
         
-        # 4. Project cuối cùng
+        # 4. Final projection
         return self.proj(volatility)  # [B,T,D]
     
 class CryptoTokenEmbedding(nn.Module):
@@ -68,13 +68,13 @@ class CryptoTimeEmbedding(nn.Module):
         self.hour_embed = nn.Embedding(24, d_model)
         
     def forward(self, x_mark):
-        # Lấy sample tương ứng với các patches
-        if x_mark.size(1) > 35:  # Nếu sequence dài hơn số patches
+        # Select samples corresponding to the patches
+        if x_mark.size(1) > 35:  # If the sequence is longer than the number of patches
             indices = torch.linspace(0, x_mark.size(1)-1, 35).long()
             x_mark = x_mark[:, indices, :]
             
-        minute_x = self.minute_embed(x_mark[..., 0].long())  # Phút
-        hour_x = self.hour_embed(x_mark[..., 1].long())      # Giờ
+        minute_x = self.minute_embed(x_mark[..., 0].long())  # Minute
+        hour_x = self.hour_embed(x_mark[..., 1].long())      # Hour
         return minute_x + hour_x  # [B, 35, D]
 
 class CryptoDataEmbedding(nn.Module):
@@ -89,10 +89,10 @@ class CryptoDataEmbedding(nn.Module):
             nn.LayerNorm(d_model)
         )
         
-        # 2. Volatility Embedding (ĐÃ SỬA)
+        # 2. Volatility Embedding (FIXED)
         self.volatility_embedding = VolatilityEmbedding(d_model, lookback)
         
-        # 3. Time Embedding (ĐÃ SỬA)
+        # 3. Time Embedding (FIXED)
         self.time_embedding = CryptoTimeEmbedding(d_model)
         
         # 4. Positional Embedding
@@ -114,10 +114,10 @@ class CryptoDataEmbedding(nn.Module):
             nn.LayerNorm(d_model)
         )
         
-        # 2. Volatility Embedding (ĐÃ SỬA)
+        # 2. Volatility Embedding (FIXED)
         self.volatility_embedding = VolatilityEmbedding(d_model, lookback)
         
-        # 3. Time Embedding (ĐÃ SỬA)
+        # 3. Time Embedding (FIXED)
         self.time_embedding = CryptoTimeEmbedding(d_model)
         
         # 4. Positional Embedding
@@ -138,7 +138,7 @@ class CryptoDataEmbedding(nn.Module):
         
         # 3. Time Embedding (FIXED)
         if x_mark is not None:
-            # Lấy mẫu time features theo patches
+            # Sample time features by patch
             patch_indices = torch.linspace(0, x_mark.size(1)-1, T).long()
             time_embed = self.time_embedding(x_mark[:, patch_indices, :])  # [B,T,D]
         else:
@@ -147,7 +147,7 @@ class CryptoDataEmbedding(nn.Module):
         # 4. Positional Embedding
         pos_embed = self.position_embedding(x)[:, :T, :]  # [1,T,D]
         
-        # 5. Tính toán output
+        # 5. Compute output
         gate = torch.sigmoid(self.volatility_gate(volatility))
         out = (x_embed + time_embed + pos_embed) * gate + volatility
         

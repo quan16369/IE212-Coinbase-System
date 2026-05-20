@@ -8,7 +8,7 @@ from typing import Dict, Any
 from embed import CryptoDataEmbedding
 
 # --------------------------
-# 1. Cấu trúc Config
+# 1. Config Structure
 # --------------------------
 @dataclass
 class RWKVConfig:
@@ -22,7 +22,7 @@ class ModelConfig:
     def __init__(self, config_dict: Dict[str, Any]):
         model_config = config_dict['model']
         
-        # Các tham số bắt buộc
+        # Required parameters
         self.enc_in = model_config['enc_in']
         self.d_model = model_config['d_model']
         self.n_heads = model_config['n_heads']
@@ -32,7 +32,7 @@ class ModelConfig:
         self.seq_len = model_config['seq_len']
         self.pred_len = model_config['pred_len']
         
-        # Các tham số có giá trị mặc định
+        # Parameters with default values
         self.dropout = model_config.get('dropout', 0.1)
         self.embed = model_config.get('embed', 'fixed')
         self.freq = model_config.get('freq', 'h')
@@ -61,9 +61,9 @@ class Patching(nn.Module):
 
     def forward(self, x):  # [B,L,C]
         B, L, C = x.shape
-        # Tính số patches chính xác
+        # Compute the exact number of patches
         num_patches = (L - self.patch_size) // self.stride + 1
-        # Tạo patches [B,num_patches,patch_size*C]
+        # Create patches [B,num_patches,patch_size*C]
         x = x.unfold(1, self.patch_size, self.stride).reshape(B, num_patches, -1)
         return x
 
@@ -195,7 +195,7 @@ class RWKV_ChannelMix(nn.Module):
         return self.dropout(x)
 
 # --------------------------
-# 6. Block chính
+# 6. Main Block
 # --------------------------
 class Block(nn.Module):
     def __init__(self, config, layer_id):
@@ -260,7 +260,7 @@ class CryptoRWKV_TS(nn.Module):
         return returns.unfold(1, 10, 1).std(dim=-1)
 
     def _overlap_add(self, patches: torch.Tensor) -> torch.Tensor:
-        # Thêm reshape để đảm bảo đúng 4 chiều
+        # Add reshape to ensure exactly 4 dimensions
         B, T, _ = patches.shape
         patches = patches.reshape(B, T, self.configs.patch_size, self.configs.c_out)
         
@@ -280,7 +280,7 @@ class CryptoRWKV_TS(nn.Module):
 
     def forward(self, x_enc: torch.Tensor, x_mark_enc=None) -> torch.Tensor:
         B, L, M = x_enc.shape
-        assert M == self.configs.enc_in, f"Input features {M} không khớp với config enc_in {self.configs.enc_in}"
+        assert M == self.configs.enc_in, f"Input features {M} do not match config enc_in {self.configs.enc_in}"
         
         # Normalization
         median = x_enc.median(dim=1, keepdim=True).values
@@ -289,15 +289,15 @@ class CryptoRWKV_TS(nn.Module):
         
         # Patching
         x_patched = self.patching(x_norm)  # [B, num_patches, patch_size * M]
-        volatility = self.compute_volatility(x_patched)  # Tính toán volatility trực tiếp
+        volatility = self.compute_volatility(x_patched)  # Compute volatility directly
         
         # Embedding
         x = self.embedding(x_patched, x_mark_enc)
         
-        # Technical Analysis (nếu có đủ features)
+        # Technical Analysis (if enough features are available)
         if M > 5:
             ta_features = self.ta_encoder(x_enc[:, :, -5:])
-            x = x + ta_features[:, :self.num_patches]  # Cắt cho khớp số patches
+            x = x + ta_features[:, :self.num_patches]  # Trim to match the number of patches
         
         # RWKV Blocks
         for block in self.blocks:
@@ -307,5 +307,5 @@ class CryptoRWKV_TS(nn.Module):
         pred_patches = self.predictor(x)  # [B, num_patches, patch_size * c_out]
         pred = self._overlap_add(pred_patches)
         
-        # Denormalize (chỉ cho feature thứ 3 - index 2)
+        # Denormalize (only for the third feature, index 2)
         return pred[:, -self.configs.pred_len:] * mad[:, :, 2:3] + median[:, :, 2:3]

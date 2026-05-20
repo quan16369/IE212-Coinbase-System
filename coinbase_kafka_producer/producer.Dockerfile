@@ -16,62 +16,62 @@ RUN pip install -r requirements.txt
 
 # Start script + logs
 RUN echo '#!/bin/bash\n\
-echo "=== Bắt đầu kiểm tra môi trường ==="\n\
-echo "Ngày giờ hiện tại: $(date)"\n\
-echo "Thư mục làm việc: $(pwd)"\n\
+echo "=== Starting environment checks ==="\n\
+echo "Current date and time: $(date)"\n\
+echo "Working directory: $(pwd)"\n\
 \n\
-# Kiểm tra phiên bản Python\n\
-echo "Phiên bản Python:"\n\
-python --version 2>&1 || { echo "Lỗi: Python không được cài đặt hoặc không chạy được"; exit 1; }\n\
+# Check Python version\n\
+echo "Python version:"\n\
+python --version 2>&1 || { echo "Error: Python is not installed or cannot run"; exit 1; }\n\
 \n\
-# Kiểm tra các thư viện Python cần thiết\n\
-echo "Kiểm tra các thư viện Python..."\n\
-pip list | grep -E "kafka-python|websocket-client|coinbase" || echo "Cảnh báo: Một số thư viện (kafka-python, websocket-client, coinbase) có thể chưa được cài đặt"\n\
-echo "Danh sách tất cả thư viện đã cài đặt:"\n\
+# Check required Python libraries\n\
+echo "Checking Python libraries..."\n\
+pip list | grep -E "kafka-python|websocket-client|coinbase" || echo "Warning: Some libraries (kafka-python, websocket-client, coinbase) may not be installed"\n\
+echo "Installed libraries:"\n\
 pip list\n\
 \n\
-# Kiểm tra sự tồn tại của producer.py\n\
-echo "Kiểm tra file producer.py..."\n\
+# Check that producer.py exists\n\
+echo "Checking producer.py..."\n\
 if [ -f /app/producer.py ]; then\n\
-    echo "File producer.py tồn tại"\n\
+    echo "producer.py exists"\n\
     ls -l /app/producer.py\n\
 else\n\
-    echo "Lỗi: File producer.py không tồn tại trong /app"\n\
+    echo "Error: producer.py does not exist in /app"\n\
     exit 1\n\
 fi\n\
 \n\
-# Kiểm tra biến môi trường\n\
-echo "=== Kiểm tra biến môi trường ==="\n\
-echo "BOOTSTRAP_SERVERS: ${BOOTSTRAP_SERVERS:-Chưa thiết lập}"\n\
-echo "COINBASE_API_KEY: ${COINBASE_API_KEY:-Chưa thiết lập}"\n\
-echo "COINBASE_API_SECRET: ${COINBASE_API_SECRET:-Chưa thiết lập}"\n\
+# Check environment variables\n\
+echo "=== Checking environment variables ==="\n\
+echo "BOOTSTRAP_SERVERS: ${BOOTSTRAP_SERVERS:-Not set}"\n\
+echo "COINBASE_API_KEY: ${COINBASE_API_KEY:-Not set}"\n\
+echo "COINBASE_API_SECRET: ${COINBASE_API_SECRET:-Not set}"\n\
 \n\
-# Kiểm tra kết nối Kafka\n\
-echo "=== Kiểm tra kết nối Kafka ==="\n\
-echo "Thử kết nối đến: $BOOTSTRAP_SERVERS"\n\
+# Check Kafka connection\n\
+echo "=== Checking Kafka connection ==="\n\
+echo "Trying to connect to: $BOOTSTRAP_SERVERS"\n\
 KAFKA_HOST=$(echo $BOOTSTRAP_SERVERS | cut -d: -f1)\n\
 KAFKA_PORT=$(echo $BOOTSTRAP_SERVERS | cut -d: -f2)\n\
-echo "Kiểm tra kết nối đến $KAFKA_HOST:$KAFKA_PORT..."\n\
-timeout 60 bash -c "until nc -z $KAFKA_HOST $KAFKA_PORT 2>/dev/null; do echo \"Đang chờ Kafka khởi động...\"; sleep 5; done"\n\
+echo "Checking connection to $KAFKA_HOST:$KAFKA_PORT..."\n\
+timeout 60 bash -c "until nc -z $KAFKA_HOST $KAFKA_PORT 2>/dev/null; do echo \"Waiting for Kafka to start...\"; sleep 5; done"\n\
 if [ $? -eq 0 ]; then\n\
-    echo "Kết nối thành công đến Kafka."\n\
+    echo "Connected to Kafka successfully."\n\
 else\n\
-    echo "Warning: Không thể kết nối đến Kafka sau 60 giây!"\n\
-    echo "Sẽ tiếp tục khởi động Producer nhưng có thể sẽ không kết nối được."\n\
+    echo "Warning: Could not connect to Kafka after 60 seconds!"\n\
+    echo "Continuing to start the producer, but it may not connect successfully."\n\
 fi\n\
 \n\
-# Chạy producer.py với log chi tiết\n\
-echo "=== Khởi động Producer ==="\n\
-echo "Chạy python /app/producer.py..."\n\
+# Run producer.py with detailed logs\n\
+echo "=== Starting Producer ==="\n\
+echo "Running python /app/producer.py..."\n\
 python /app/producer.py 2>&1 | tee /app/producer.log\n\
 EXIT_CODE=$?\n\
-echo "Mã thoát của producer.py: $EXIT_CODE"\n\
+echo "producer.py exit code: $EXIT_CODE"\n\
 if [ $EXIT_CODE -ne 0 ]; then\n\
-    echo "Lỗi: producer.py không chạy thành công. Kiểm tra /app/producer.log để biết chi tiết."\n\
+    echo "Error: producer.py did not run successfully. Check /app/producer.log for details."\n\
     cat /app/producer.log\n\
     exit $EXIT_CODE\n\
 else\n\
-    echo "producer.py đã chạy thành công."\n\
+    echo "producer.py ran successfully."\n\
 fi\n' > /app/start.sh && chmod +x /app/start.sh
 
 ENTRYPOINT ["/app/start.sh"]
