@@ -2,6 +2,7 @@
 spark-3.5.5
 kafka_2.13-4.0.0
 .env
+backups/
 test.py
 __pycache__/
 *.pyc

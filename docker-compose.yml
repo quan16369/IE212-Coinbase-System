@@ -1,4 +1,8 @@
-version: '3.8'
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "${LOG_MAX_SIZE:-10m}"
+    max-file: "${LOG_MAX_FILE:-3}"
 
 services:
   # Kafka configuration
@@ -6,7 +10,7 @@ services:
     image: confluentinc/cp-kafka:latest
     container_name: kafka
     ports:
-      - "9092:9092"
+      - "${KAFKA_EXTERNAL_PORT:-9092}:9092"
     environment:
       # KRaft mode
       KAFKA_NODE_ID: 1
@@ -16,7 +20,7 @@ services:
       
       # Listeners configuration
       KAFKA_LISTENERS: 'PLAINTEXT://kafka:29092,CONTROLLER://kafka:29093,PLAINTEXT_HOST://0.0.0.0:9092'
-      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092'
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:${KAFKA_EXTERNAL_PORT:-9092}"
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
       KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
       
@@ -27,15 +31,16 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       
-      # Thư mục dữ liệu
+      # Data directory
       KAFKA_LOG_DIRS: '/tmp/kraft-combined-logs'
       
-      # Chế độ clustering
-      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      # Cluster mode
+      CLUSTER_ID: "${KAFKA_CLUSTER_ID:-MkU3OEVBNTcwNTJENDM2Qk}"
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks:
       - ie212_pipeline
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:29092 --list"]
       interval: 10s
@@ -52,24 +57,25 @@ services:
         condition: service_healthy
     command: >
       bash -c "
-        echo 'Chờ Kafka khởi động...'
+        echo 'Waiting for Kafka to start...'
         sleep 5
-        echo 'Tạo topic coin-data...'
+        echo 'Creating topic coin-data...'
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic coin-data --partitions 3 --replication-factor 1
-        echo 'Topic coin-data đã được tạo.'
-        echo 'Tạo topic coin-model-data...'
+        echo 'Topic coin-data has been created.'
+        echo 'Creating topic coin-model-data...'
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic coin-model-data --partitions 3 --replication-factor 1
-        echo 'Topic coin-model đã được tạo.'
+        echo 'Topic coin-model-data has been created.'
       "
     networks:
       - ie212_pipeline
+    logging: *default-logging
 
-  # UI để quản lý Kafka
+  # Kafka management UI
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     container_name: kafka-ui
     ports:
-      - "8080:8080"
+      - "${KAFKA_UI_PORT:-8080}:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
@@ -78,6 +84,7 @@ services:
         condition: service_healthy
     networks:
       - ie212_pipeline
+    logging: *default-logging
 
   # Cassandra setup database
   # cassandra:
@@ -106,16 +113,17 @@ services:
       dockerfile: ./cassandra.Dockerfile
     container_name: cassandra
     ports:
-      - "9042:9042"
+      - "${CASSANDRA_PORT:-9042}:9042"
     environment:
-      - CASSANDRA_CLUSTER_NAME=coinbase_cluster
-      - CASSANDRA_KEYSPACE=coinbase
-      - MAX_HEAP_SIZE=512M
-      - HEAP_NEWSIZE=100M
+      - CASSANDRA_CLUSTER_NAME=${CASSANDRA_CLUSTER_NAME:-coinbase_cluster}
+      - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE:-coinbase}
+      - MAX_HEAP_SIZE=${CASSANDRA_MAX_HEAP_SIZE:-512M}
+      - HEAP_NEWSIZE=${CASSANDRA_HEAP_NEWSIZE:-100M}
     volumes:
       - cassandra-data:/var/lib/cassandra
     networks:
       - ie212_pipeline
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "nodetool status | grep -q '^UN'"]
       interval: 30s
@@ -123,7 +131,27 @@ services:
       retries: 5
       start_period: 30s
 
-  # Cassandra setup - tạo keyspace và table
+  cassandra-migrate:
+    image: cassandra:latest
+    container_name: cassandra-migrate
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    volumes:
+      - ./ops/cassandra/migrations:/migrations:ro
+    command: >
+      bash -c "
+        until cqlsh cassandra 9042 -e 'DESCRIBE KEYSPACES' >/dev/null 2>&1; do
+          echo 'Waiting for Cassandra migrations target...';
+          sleep 5;
+        done;
+        find /migrations -maxdepth 1 -name '*.cql' -print | sort | xargs -r -I{} cqlsh cassandra 9042 -f {};
+      "
+    networks:
+      - ie212_pipeline
+    logging: *default-logging
+
+  # Cassandra setup - create keyspace and tables
   # cassandra-setup:
   #   image: cassandra:latest
   #   container_name: cassandra-setup
@@ -156,16 +184,17 @@ services:
     image: minio/minio:latest
     container_name: minio
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
     networks:
       - ie212_pipeline
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -177,16 +206,22 @@ services:
     image: minio/mc
     container_name: minio-setup
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      S3_BUCKET: ${S3_BUCKET:-ie212-coinbase-data}
     entrypoint: >
       /bin/sh -c "
         sleep 5;
-        /usr/bin/mc config host add minio http://minio:9000 minioadmin minioadmin;
-        /usr/bin/mc mb --ignore-existing minio/ie212-coinbase-data;
+        /usr/bin/mc alias set minio http://minio:9000 "${MINIO_ROOT_USER:-minioadmin}" "${MINIO_ROOT_PASSWORD:-minioadmin}";
+        /usr/bin/mc mb --ignore-existing minio/"${S3_BUCKET:-ie212-coinbase-data}";
         exit 0;
       "
     networks:
       - ie212_pipeline
+    logging: *default-logging
 
   # Python Producer
   coinbase-producer:
@@ -202,6 +237,7 @@ services:
     networks:
       - ie212_pipeline
     restart: unless-stopped
+    logging: *default-logging
 
   # Go Consumer
   coinbase-consumer:
@@ -210,20 +246,24 @@ services:
       dockerfile: ./go_kafka_consumer/consumer.Dockerfile
     container_name: coinbase-consumer
     depends_on:
-      - kafka
-      - minio
-      - kafka-init
+      kafka:
+        condition: service_started
+      minio-setup:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       BOOTSTRAP_SERVERS: kafka:29092
-      AWS_ENDPOINT: http://minio:9000 # Uncomment if using MinIO
-      AWS_REGION: ap-southeast-1 # ap-southeast-1 if using MinIO
-      AWS_ACCESS_KEY_ID: minioadmin  # minioadmin if using MinIO
-      AWS_SECRET_ACCESS_KEY: minioadmin # minioadmin if using MinIO
-      AWS_S3_FORCE_PATH_STYLE: "true" # Uncomment if using MinIO
-      # AWS_S3_BUCKET: ${S3_BUCKET} # Comment this line if using MinIO
+      AWS_ENDPOINT: ${AWS_ENDPOINT:-http://minio:9000}
+      AWS_REGION: ${AWS_REGION:-ap-southeast-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+      AWS_S3_FORCE_PATH_STYLE: "${AWS_S3_FORCE_PATH_STYLE:-true}"
+      S3_BUCKET: ${S3_BUCKET:-ie212-coinbase-data}
     networks:
       - ie212_pipeline
     restart: unless-stopped
+    logging: *default-logging
 
   # Spark Processor
   spark-processor:
@@ -232,8 +272,10 @@ services:
       dockerfile: ./kafka_spark_processor/processor.Dockerfile
     container_name: spark-processor
     depends_on:
-      - kafka
-      - cassandra
+      kafka:
+        condition: service_started
+      cassandra-migrate:
+        condition: service_completed_successfully
     environment:
       KAFKA_HOST: kafka
       KAFKA_PORT: 29092
@@ -242,6 +284,7 @@ services:
     networks:
       - ie212_pipeline
     restart: unless-stopped
+    logging: *default-logging
     
   # Prediction service
   price-predictor:
@@ -250,23 +293,23 @@ services:
       dockerfile: ./prediction_service/prediction.Dockerfile
     container_name: price-predictor
     environment:
-      - CASSANDRA_HOSTS=cassandra
-      - CASSANDRA_PORT=9042
-      - CASSANDRA_KEYSPACE=coinbase
-      - PRODUCT_IDS=BTC-USD,ETH-USD,XRP-USD
-      - PREDICTION_INTERVAL=300
-      - MODEL_CONFIG_PATH=/app/model/configs/train_config.yaml
-      - MODEL_CHECKPOINT_PATH=/app/model/checkpoints/best_epoch_16.pt
-      - MODEL_NAME=lstm_model_v1
-      - MODEL_VERSION=1.0
-      - DEVICE=cpu
-      - ENABLE_HEALTH_CHECK=true
-      - MODEL_TYPE=lstm
+      - CASSANDRA_HOSTS=${PREDICTOR_CASSANDRA_HOSTS:-cassandra}
+      - CASSANDRA_PORT=${CASSANDRA_PORT:-9042}
+      - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE:-coinbase}
+      - PRODUCT_IDS=${PRODUCT_IDS:-BTC-USD,ETH-USD,XRP-USD}
+      - PREDICTION_INTERVAL=${PREDICTION_INTERVAL:-300}
+      - MODEL_CONFIG_PATH=${MODEL_CONFIG_PATH:-/app/model/configs/train_config.yaml}
+      - MODEL_CHECKPOINT_PATH=${MODEL_CHECKPOINT_PATH:-/app/model/checkpoints/best_epoch_16.pt}
+      - MODEL_NAME=${MODEL_NAME:-lstm_model_v1}
+      - MODEL_VERSION=${MODEL_VERSION:-1.0}
+      - DEVICE=${DEVICE:-cpu}
+      - ENABLE_HEALTH_CHECK=${ENABLE_HEALTH_CHECK:-true}
+      - MODEL_TYPE=${MODEL_TYPE:-lstm}
     ports:
-      - "8000:8000"  # Health check port
+      - "${PREDICTION_SERVICE_PORT:-8000}:8000"  # Health check port
     depends_on:
-      cassandra:
-        condition: service_healthy
+      cassandra-migrate:
+        condition: service_completed_successfully
     networks:
       - ie212_pipeline
     restart: unless-stopped
@@ -279,6 +322,7 @@ services:
     volumes:
       - prediction-logs:/app/logs
       - ./Crypto-TS-Model-master:/app/model:ro  # Mount model files as read-only
+    logging: *default-logging
 
   # Grafana for visualization
   grafana:
@@ -287,21 +331,130 @@ services:
       dockerfile: ./grafana.Dockerfile
     container_name: grafana
     ports:
-      - "3000:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     volumes:
       - ./grafana/config:/etc/grafana/config
       - ./grafana/dashboards:/etc/grafana/dashboards
       - grafana-data:/var/lib/grafana
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=${GRAFANA_ANONYMOUS_ENABLED:-true}
       - GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
-      - GF_LOG_LEVEL=debug
+      - GF_LOG_LEVEL=${GRAFANA_LOG_LEVEL:-info}
     networks:
       - ie212_pipeline
     depends_on:
       - cassandra
     restart: unless-stopped
+    logging: *default-logging
+
+  # Metrics and alerting. Start with: COMPOSE_PROFILES=ops docker compose up -d
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    profiles:
+      - ops
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - ie212_pipeline
+    depends_on:
+      - alertmanager
+      - blackbox-exporter
+      - cadvisor
+    restart: unless-stopped
+    logging: *default-logging
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    profiles:
+      - ops
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    networks:
+      - ie212_pipeline
+    restart: unless-stopped
+    logging: *default-logging
+
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    container_name: blackbox-exporter
+    profiles:
+      - ops
+    volumes:
+      - ./monitoring/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    networks:
+      - ie212_pipeline
+    restart: unless-stopped
+    logging: *default-logging
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    profiles:
+      - ops
+    ports:
+      - "${CADVISOR_PORT:-8081}:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - ie212_pipeline
+    restart: unless-stopped
+    logging: *default-logging
+
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    profiles:
+      - ops
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    command:
+      - "-config.file=/etc/loki/local-config.yaml"
+    volumes:
+      - loki-data:/loki
+    networks:
+      - ie212_pipeline
+    restart: unless-stopped
+    logging: *default-logging
+
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    profiles:
+      - ops
+    command:
+      - "-config.file=/etc/promtail/config.yml"
+    volumes:
+      - ./monitoring/promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - ie212_pipeline
+    depends_on:
+      - loki
+    restart: unless-stopped
+    logging: *default-logging
 
 volumes:
   kafka-data:
@@ -309,7 +462,10 @@ volumes:
   minio-data:
   grafana-data:
   prediction-logs:
+  prometheus-data:
+  alertmanager-data:
+  loki-data:
 
 networks:
   ie212_pipeline:
-    driver: bridge 
+    driver: bridge

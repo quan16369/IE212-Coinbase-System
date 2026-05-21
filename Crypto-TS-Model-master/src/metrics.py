@@ -5,7 +5,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 from typing import Union, Dict, Optional
 
 class CryptoMetrics:
-    """Class tính toán các metrics đặc thù cho crypto trading"""
+    """Compute crypto trading-specific metrics."""
     
     def __init__(self, config: Optional[Dict] = None):
         self.config = config or {}
@@ -14,7 +14,7 @@ class CryptoMetrics:
     @staticmethod
     def smape(y_true: Union[torch.Tensor, np.ndarray], 
               y_pred: Union[torch.Tensor, np.ndarray]) -> float:
-        """Tính SMAPE với epsilon tránh chia 0"""
+        """Compute SMAPE with epsilon to avoid division by zero."""
         if isinstance(y_true, torch.Tensor):
             y_true, y_pred = y_true.cpu().numpy(), y_pred.cpu().numpy()
         return 200 * np.mean(
@@ -25,7 +25,7 @@ class CryptoMetrics:
     def directional_accuracy(self, 
                           y_true: Union[torch.Tensor, np.ndarray],
                           y_pred: Union[torch.Tensor, np.ndarray]) -> float:
-        """Tính độ chính xác hướng dự đoán"""
+        """Compute prediction direction accuracy."""
         if isinstance(y_true, torch.Tensor):
             y_true, y_pred = y_true.cpu().numpy(), y_pred.cpu().numpy()
         true_dir = np.sign(y_true[..., 1:] - y_true[..., :-1])
@@ -35,7 +35,7 @@ class CryptoMetrics:
     def volatility_rmse(self,
                       y_true: Union[torch.Tensor, np.ndarray],
                       y_pred: Union[torch.Tensor, np.ndarray]) -> float:
-        """RMSE của biến động giá"""
+        """RMSE of price volatility."""
         if isinstance(y_true, torch.Tensor):
             y_true, y_pred = y_true.cpu().numpy(), y_pred.cpu().numpy()
         
@@ -44,7 +44,7 @@ class CryptoMetrics:
         return np.sqrt(mean_squared_error(true_vol, pred_vol))
 
     def _rolling_volatility(self, data: np.ndarray) -> np.ndarray:
-        """Tính biến động rolling"""
+        """Compute rolling volatility."""
         returns = np.diff(data, axis=-1)
         return np.sqrt(
             np.convolve(returns**2, np.ones(self.vol_window)/self.vol_window, 'valid')
@@ -53,7 +53,7 @@ class CryptoMetrics:
     def evaluate_all(self,
                    y_true: Union[torch.Tensor, np.ndarray],
                    y_pred: Union[torch.Tensor, np.ndarray]) -> Dict[str, float]:
-        """Tính toán tất cả metrics"""
+        """Compute all metrics."""
         return {
             'smape': self.smape(y_true, y_pred),
             'mae': mean_absolute_error(y_true, y_pred),
@@ -66,7 +66,7 @@ class CryptoMetrics:
                        y_true: Union[torch.Tensor, np.ndarray],
                        y_pred: Union[torch.Tensor, np.ndarray],
                        title: str = "Predictions") -> None:
-        """Visualize kết quả dự đoán"""
+        """Visualize prediction results."""
         if isinstance(y_true, torch.Tensor):
             y_true, y_pred = y_true.cpu().numpy(), y_pred.cpu().numpy()
         

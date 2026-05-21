@@ -2,7 +2,7 @@ FROM golang:latest AS builder
 
 WORKDIR /app
 
-# Cài đặt librdkafka-dev để hỗ trợ confluent-kafka-go
+# Install librdkafka-dev for confluent-kafka-go support
 RUN apt-get update && \
     apt-get install -y librdkafka-dev pkg-config && \
     rm -rf /var/lib/apt/lists/*

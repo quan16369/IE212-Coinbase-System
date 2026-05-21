@@ -31,12 +31,12 @@ class LightAttention(nn.Module):
         Q = self.query(x)  # (B, T, d_model)
         K = self.key(x)    # (B, T, d_model)
         
-        # Attention đơn giản
+        # Simple attention
         scores = torch.bmm(Q, K.transpose(1, 2)) / math.sqrt(self.d_model)
         attn = F.softmax(scores, dim=-1)
         attn = self.dropout(attn)
         
-        # Kết hợp residual
+        # Combine residual
         out = x + self.gamma * torch.bmm(attn, x)
         return out
 
@@ -48,7 +48,7 @@ class LSTMAttentionHybrid(nn.Module):
         self.pred_len = model_cfg['pred_len']
         self.out_dim = model_cfg.get('output_dim', 1)
         
-        # Phần đầu vào
+        # Input block
         self.input_proj = nn.Sequential(
             nn.Linear(model_cfg['enc_in'], d_model),
             nn.LayerNorm(d_model),
@@ -72,14 +72,14 @@ class LSTMAttentionHybrid(nn.Module):
             batch_first=True
         )
         
-        # Attention và gate điều khiển
+        # Attention and control gate
         self.attention = LightAttention(d_model)
         self.attention_gate = nn.Sequential(
             nn.Linear(2*d_model, d_model),
             nn.Sigmoid()
         )
         
-        # Phần đầu ra
+        # Output block
         self.output_proj = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.LayerNorm(d_model),
@@ -91,25 +91,25 @@ class LSTMAttentionHybrid(nn.Module):
         self.pos_encoder = PositionalEncoding(d_model)
 
     def forward(self, x, time_features=None):
-        # Phần đầu vào
+        # Input block
         x = self.input_proj(x)
         x = self.pos_encoder(x)
         
-        # LSTM tầng thấp (bidirectional)
+        # Low-level LSTM (bidirectional)
         lstm1_out, _ = self.lstm1(x)
         lstm1_out = lstm1_out[:, :, :self.d_model//2] + lstm1_out[:, :, self.d_model//2:]  # Combine bidirectional
         
-        # Ghép với đầu vào ban đầu
+        # Concatenate with the original input
         lstm1_out = torch.cat([x, lstm1_out], dim=-1)
         
-        # Attention có gate điều khiển
+        # Attention with control gate
         gate = self.attention_gate(lstm1_out)
         attn_out = self.attention(lstm1_out * gate)
         
-        # LSTM tầng cao
+        # High-level LSTM
         lstm2_out, _ = self.lstm2(attn_out)
         
-        # Pooling và đầu ra
+        # Pooling and output
         context = lstm2_out.mean(dim=1)  # Global average pooling
         output = self.output_proj(context)
         

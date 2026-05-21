@@ -26,11 +26,11 @@ class CryptoDataset(Dataset):
         self.current_epoch = 0
         self.max_epoch = 100 
         
-        # Tải và tiền xử lý dữ liệu
+        # Load and preprocess data
         raw_df = self._load_and_clean(data_path)
         self.data = self._enhance_crypto_features(raw_df, self.freq)
         
-        # Khởi tạo scalers
+        # Initialize scalers
         self.scalers = scalers if scalers is not None else {
             'price': RobustScaler(),
             'volume': RobustScaler(),
@@ -38,16 +38,16 @@ class CryptoDataset(Dataset):
             'time': MinMaxScaler()
         }
         
-        # Fit và transform dữ liệu
+        # Fit and transform data
         if self.train:
             self._fit_scalers()
         self._scale_data()
 
     def _load_and_clean(self, path: str) -> pd.DataFrame:
-        """Tải và làm sạch dữ liệu thô"""
+        """Load and clean raw data."""
         df = pd.read_csv(path, float_precision='high')
         
-        # Chuẩn hóa tên cột
+        # Normalize column names
         column_map = {
             'timestamp': 'timestamp',
             'Open': 'open',
@@ -58,15 +58,15 @@ class CryptoDataset(Dataset):
         }
         df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
         
-        # Xử lý timestamp
+        # Process timestamp
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         df = df.set_index('timestamp').sort_index()
         
-        # Xử lý missing values và outliers
+        # Handle missing values and outliers
         df['volume'] = df['volume'].replace(0, np.nan)
         df['volume'] = df['volume'].fillna(df['volume'].rolling(12, min_periods=1).median())
         
-        # Clip outliers cho các cột quan trọng
+        # Clip outliers for important columns
         for col in ['close', 'volume']:
             q1 = df[col].quantile(0.01)
             q3 = df[col].quantile(0.99)
@@ -76,7 +76,7 @@ class CryptoDataset(Dataset):
 
     def _enhance_crypto_features(self, df: pd.DataFrame, freq: str) -> pd.DataFrame:
 
-        # Resample nếu tần số khác 5 phút
+        # Resample if frequency is different from 5 minutes
         if freq != '5T':
             ohlc_dict = {
                 'open': 'first',
@@ -87,7 +87,7 @@ class CryptoDataset(Dataset):
             }
             df = df.resample(freq).apply(ohlc_dict).dropna()
         
-        # 1. Features giá và lợi nhuận
+        # 1. Price and return features
         df['log_returns'] = np.log1p(df['close'].pct_change())
         df['price_ma_ratio'] = df['close'] / df['close'].rolling(24, min_periods=1).mean()
         df['price_spread'] = (df['high'] - df['low']) / df['close']
@@ -104,7 +104,7 @@ class CryptoDataset(Dataset):
         df['obv'] = ta.volume.OnBalanceVolumeIndicator(df['close'], df['volume']).on_balance_volume()
         
         # 4. Volatility features
-        for window in [6, 12, 24]:  # 30 phút, 1 giờ, 2 giờ
+        for window in [6, 12, 24]:  # 30 minutes, 1 hour, 2 hours
             df[f'volatility_{window}'] = df['log_returns'].rolling(window).std()
         
         # 5. Momentum features
@@ -188,7 +188,7 @@ class CryptoDataset(Dataset):
                 local_mean = np.mean(x[window_start:window_end], axis=0, keepdims=True)
                 x[mask_start:mask_start + mask_length] = local_mean
 
-            # 3. Adaptive Noise (có clip std để tránh NaN)
+            # 3. Adaptive Noise (clip std to avoid NaN)
             feature_stds = np.clip(np.std(x, axis=0, keepdims=True), 1e-6, None)
             noise = np.random.normal(0, noise_level * feature_stds, size=x.shape)
             x = np.clip(x + noise, -3, 3)
@@ -208,7 +208,7 @@ class CryptoDataset(Dataset):
                 x_tensor = F.interpolate(x_tensor, scale_factor=warp_factor, mode='linear', align_corners=False)
                 x_tensor = x_tensor.permute(0, 2, 1).squeeze(0)  # [new_T, D]
                 x = x_tensor.numpy()
-                # Pad hoặc cắt lại đúng self.seq_len
+                # Pad or trim back to exactly self.seq_len
                 if x.shape[0] >= self.seq_len:
                     x = x[:self.seq_len]
                 else:
@@ -231,7 +231,7 @@ class CryptoDataset(Dataset):
         
     @classmethod
     def from_cassandra_rows(cls, rows: list, config: Dict[str, Any], scalers: Optional[Dict] = None):
-        """Tạo dataset từ dữ liệu real-time"""
+        """Create a dataset from real-time data."""
         data = {
             'timestamp': [row.timestamp for row in rows],
             'open': [float(row.open) for row in rows],
@@ -280,7 +280,7 @@ class CryptoDataLoader:
             train=True
         )
         
-        # Chia dữ liệu theo thời gian 
+        # Split data by time
         split_idx = int(len(full_data) * self.config['data']['train_ratio'])
         train_idx = np.arange(split_idx)
         test_idx = np.arange(split_idx, len(full_data))
@@ -288,11 +288,11 @@ class CryptoDataLoader:
         self.train_data = SubsetWithAttributes(full_data, train_idx)
         self.test_data = SubsetWithAttributes(full_data, test_idx)
         
-        # Lưu scalers và feature names
+        # Save scalers and feature names
         self.scalers = full_data.scalers
         self.feature_names = full_data.feature_names
         
-        # Tạo data loaders
+        # Create data loaders
         self.batch_size = self.config['training']['batch_size']
         self.train_loader = self._create_loader(self.train_data, shuffle=True)
         self.test_loader = self._create_loader(self.test_data, shuffle=False)

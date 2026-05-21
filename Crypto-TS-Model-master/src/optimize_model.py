@@ -24,7 +24,7 @@ class MultiScaleTemporalAttention(nn.Module):
         self.d_model = d_model
         self.n_heads = n_heads
         
-        # Các lớp attention cho từng scale
+        # Attention layers for each scale
         self.attention_heads = nn.ModuleList([
             nn.MultiheadAttention(
                 embed_dim=d_model,
@@ -34,7 +34,7 @@ class MultiScaleTemporalAttention(nn.Module):
             ) for _ in scales
         ])
         
-        # Lớp downsample cho các scale lớn hơn 1
+        # Downsampling layers for scales greater than 1
         self.downsamplers = nn.ModuleList([
             nn.Sequential(
                 nn.AvgPool1d(kernel_size=scale, stride=scale),
@@ -43,7 +43,7 @@ class MultiScaleTemporalAttention(nn.Module):
             for scale in scales
         ])
         
-        # Lớp tổng hợp
+        # Aggregation layer
         self.aggregate = nn.Sequential(
             nn.Linear(d_model * len(scales), d_model),
             nn.LayerNorm(d_model),
@@ -59,7 +59,7 @@ class MultiScaleTemporalAttention(nn.Module):
         outputs = []
         
         for scale, attention, downsample in zip(self.scales, self.attention_heads, self.downsamplers):
-            # Xử lý theo từng scale
+            # Process each scale
             if scale > 1:
                 # Downsample sequence
                 x_down = downsample(x.transpose(1, 2)).transpose(1, 2)
@@ -69,13 +69,13 @@ class MultiScaleTemporalAttention(nn.Module):
             # Self-attention
             attn_out, _ = attention(x_down, x_down, x_down)
             
-            # Upsample trở lại độ dài ban đầu nếu cần
+            # Upsample back to the original length if needed
             if scale > 1:
                 attn_out = F.interpolate(attn_out.permute(0, 2, 1), size=T).permute(0, 2, 1)
             
             outputs.append(attn_out)
         
-        # Kết hợp các kết quả từ nhiều scale
+        # Combine results from multiple scales
         combined = torch.cat(outputs, dim=-1)
         return self.aggregate(combined)
     
@@ -160,7 +160,7 @@ class OptimizedLSTMAttentionModel(nn.Module):
         # Multi-scale temporal attention
         attn_out = self.temporal_attention(lstm_out)
         
-        # Skip connection từ đầu vào LSTM
+        # Skip connection from the LSTM input
         skip = self.skip_conv(lstm_out.permute(0, 2, 1)).permute(0, 2, 1)
         skip = self.pool_norm(skip)  
 

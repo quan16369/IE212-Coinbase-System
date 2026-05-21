@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+!.env.prod.example
+backups
+__pycache__
+*.pyc
+*.pyo
+*.log
+spark-3.5.5
+kafka_2.13-4.0.0
+Crypto-TS-Model-master/notebooks

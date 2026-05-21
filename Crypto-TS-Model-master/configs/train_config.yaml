@@ -42,18 +42,18 @@
 
 data:
   path: "/kaggle/working/BNB_OHLC_5m.csv"
-  freq: "5T"                # Data resolution 5 phút
+  freq: "5T"                # Data resolution: 5 minutes
   train_ratio: 1.0        
 
 model:
   model_type: "lstm"    # "lstm", "lstm_attention", "optimize"
-  enc_in: 26                # Số features 
-  d_model: 128               # Giảm từ 128 -> 96 
-  e_layers: 1               # Số LSTM layers
-  n_heads: 4                # Số attention heads
-  seq_len: 288              # 24h = 288*5phút (tăng context window)
-  pred_len: 36              # 3h = 36*5phút
-  dropout: 0.5              # Tăng dropout để chống overfit
+  enc_in: 26                # Number of features
+  d_model: 128              # Reduced from 128 -> 96
+  e_layers: 1               # Number of LSTM layers
+  n_heads: 4                # Number of attention heads
+  seq_len: 288              # 24h = 288*5 minutes (larger context window)
+  pred_len: 36              # 3h = 36*5 minutes
+  dropout: 0.5              # Increase dropout to reduce overfitting
   output_dim: 1
 
 training:
@@ -65,13 +65,13 @@ training:
   checkpoint_dir: "checkpoints"
   checkpoint_interval: 10
   resume: "auto"
-  patience: 50             
+  patience: 50
   min_delta: 0.0005
   loss_fn: "mse"
   use_amp: True
-  grad_accum_steps: 1       
+  grad_accum_steps: 1
   ema_decay: 0.996
   use_swa: True
   swa_lr: 0.01
   swa_start_ratio: 0.5
-  warmup_epochs: 5   
+  warmup_epochs: 5

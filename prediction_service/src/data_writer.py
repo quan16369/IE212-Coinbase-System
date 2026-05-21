@@ -7,22 +7,22 @@ import time
 logger = logging.getLogger(__name__)
 
 class PredictionDataWriter:
-    """Class để ghi kết quả dự đoán vào Cassandra"""
+    """Write prediction results to Cassandra."""
     
     def __init__(self, cassandra_client: CassandraClient):
         self.client = cassandra_client
         self.session = cassandra_client.get_session()
         
-        # Tạo tables nếu chưa tồn tại
+        # Create tables if they do not exist
         self._create_prediction_tables()
         
         # Prepare statements
         self._prepare_statements()
     
     def _create_prediction_tables(self):
-        """Tạo các bảng cần thiết để lưu predictions"""
+        """Create the required tables for storing predictions."""
         try:
-            # Bảng predictions chính
+            # Main predictions table
             create_predictions_table = """
             CREATE TABLE IF NOT EXISTS predictions (
                 product_id TEXT,
@@ -38,7 +38,7 @@ class PredictionDataWriter:
             ) WITH CLUSTERING ORDER BY (prediction_time DESC, target_time ASC)
             """
             
-            # Bảng predictions theo horizon để query dễ hơn
+            # Predictions by horizon table for easier querying
             create_predictions_by_horizon_table = """
             CREATE TABLE IF NOT EXISTS predictions_by_horizon (
                 product_id TEXT,
@@ -53,7 +53,7 @@ class PredictionDataWriter:
             ) WITH CLUSTERING ORDER BY (prediction_time DESC)
             """
             
-            # Bảng để track model performance
+            # Table for tracking model performance
             create_model_metrics_table = """
             CREATE TABLE IF NOT EXISTS model_metrics (
                 product_id TEXT,
@@ -80,7 +80,7 @@ class PredictionDataWriter:
             raise
     
     def _prepare_statements(self):
-        """Prepare các statements thường dùng"""
+        """Prepare common statements."""
         try:
             # Insert prediction statement
             self.insert_prediction_stmt = self.session.prepare("""
@@ -130,20 +130,20 @@ class PredictionDataWriter:
                          model_version: str = "1.0",
                          metadata: str = "") -> bool:
         """
-        Ghi predictions vào database
+        Write predictions to the database.
         
         Args:
-            product_id: ID của sản phẩm (VD: BTC-USD)
-            model_name: Tên model
-            predictions: List các giá trị dự đoán
-            target_timestamps: List thời gian tương ứng với dự đoán
-            prediction_time: Thời gian thực hiện dự đoán
-            confidence_intervals: Dict với 'lower' và 'upper' bounds
-            model_version: Version của model
-            metadata: Metadata bổ sung
+            product_id: Product ID (for example: BTC-USD)
+            model_name: Model name
+            predictions: List of predicted values
+            target_timestamps: List of timestamps corresponding to predictions
+            prediction_time: Prediction execution time
+            confidence_intervals: Dict with 'lower' and 'upper' bounds
+            model_version: Model version
+            metadata: Additional metadata
             
         Returns:
-            bool: True nếu thành công
+            bool: True if successful
         """
         try:
             if prediction_time is None:
@@ -192,16 +192,16 @@ class PredictionDataWriter:
                            metrics: Dict[str, Any],
                            evaluation_time: datetime = None) -> bool:
         """
-        Ghi model performance metrics
+        Write model performance metrics.
         
         Args:
-            product_id: ID sản phẩm
-            model_name: Tên model
-            metrics: Dict chứa các metrics
-            evaluation_time: Thời gian đánh giá
+            product_id: Product ID
+            model_name: Model name
+            metrics: Dict containing metrics
+            evaluation_time: Evaluation time
             
         Returns:
-            bool: True nếu thành công
+            bool: True if successful
         """
         try:
             if evaluation_time is None:
@@ -245,16 +245,16 @@ class PredictionDataWriter:
                               hours_back: int = 24,
                               limit: int = 1000) -> List[Dict[str, Any]]:
         """
-        Lấy predictions gần đây
+        Get recent predictions.
         
         Args:
-            product_id: ID sản phẩm
-            model_name: Tên model
-            hours_back: Số giờ trước đó
-            limit: Giới hạn số records
+            product_id: Product ID
+            model_name: Model name
+            hours_back: Number of previous hours
+            limit: Record limit
             
         Returns:
-            List các prediction records
+            List of prediction records
         """
         try:
             from datetime import datetime, timedelta
@@ -289,21 +289,21 @@ class PredictionDataWriter:
     
     def cleanup_old_predictions(self, days_to_keep: int = 30) -> bool:
         """
-        Xóa predictions cũ để tiết kiệm dung lượng
+        Delete old predictions to save storage.
         
         Args:
-            days_to_keep: Số ngày muốn giữ lại
+            days_to_keep: Number of days to keep
             
         Returns:
-            bool: True nếu thành công
+            bool: True if successful
         """
         try:
             from datetime import datetime, timedelta
             
             cutoff_time = datetime.utcnow() - timedelta(days=days_to_keep)
             
-            # Note: Cassandra không hỗ trợ DELETE với time range trực tiếp
-            # Cần implement logic phức tạp hơn hoặc sử dụng TTL
+            # Note: Cassandra does not support direct DELETE with a time range
+            # More complex logic or TTL is required
             logger.warning("Cleanup old predictions requires TTL setup or custom implementation")
             
             return True
@@ -313,7 +313,7 @@ class PredictionDataWriter:
             return False
     
     def get_prediction_stats(self, product_id: str, model_name: str) -> Dict[str, Any]:
-        """Lấy thống kê về predictions"""
+        """Get prediction statistics."""
         try:
             query = """
                 SELECT COUNT(*) as count, MIN(prediction_time) as earliest, MAX(prediction_time) as latest
