@@ -24,7 +24,7 @@ The real-time data pipeline project facilitates the collection, processing, stor
 
 - **Cassandra Database**:  
 For long-term data storage, Apache Cassandra, a highly scalable NoSQL database known for its exceptional write and read performance, is employed. Cassandra serves as the solution for storing historical cryptocurrency market data. 
-The data also flows into cryptocurrency predicting model from the Database, expecting to increase the Acuuracy for the model thanks to simultaneously new data added.
+The streaming tables can feed downstream forecasting experiments and serving workflows.
 
 - **Grafana for Data Visualization**: To make data easily understandable, Grafana, an open-source platform for monitoring and observability, is utilized. Grafana queries data from Cassandra to create compelling real-time visualizations, providing insights into cryptocurrency market trends.
 
@@ -41,6 +41,7 @@ The data also flows into cryptocurrency predicting model from the Database, expe
 Install Docker Desktop. After that, run: docker-compose up -d
 
 For Jenkins CI/CD, monitoring, logs, migrations, and backup/restore, see [OPERATIONS.md](OPERATIONS.md).
+For the CPU ML model, MLflow tracking, and BentoML serving path, see [MLOPS.md](MLOPS.md).
 ## Future Work
 * Perform code cleanup and integration testing
 * Deploy to EKS
@@ -52,6 +53,4 @@ For Jenkins CI/CD, monitoring, logs, migrations, and backup/restore, see [OPERAT
 
 
 ![Screenshot 2025-05-28 215935](https://github.com/user-attachments/assets/75c04d07-2d63-44bd-9a3c-6bc1ae967ea2)
-
-
 

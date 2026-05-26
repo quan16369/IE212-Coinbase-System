@@ -29,11 +29,11 @@ if [[ -n "$PYTHON_BIN" ]]; then
   "$PYTHON_BIN" -c "import ast, pathlib; files = [
     'coinbase_kafka_producer/producer.py',
     'kafka_spark_processor/spark_processor.py',
-    'prediction_service/src/cassandra_client.py',
-    'prediction_service/src/data_fetcher.py',
-    'prediction_service/src/data_writer.py',
-    'prediction_service/src/prediction_service.py',
-    'prediction_service/src/predictor.py',
+    'mlops/features.py',
+    'mlops/service.py',
+    'mlops/train.py',
+    'scripts/promote_mlflow_model.py',
+    'scripts/test_bento_predict.py',
 ]; [ast.parse(pathlib.Path(path).read_text(), filename=path) for path in files]"
 else
   echo "python not found; skipping Python syntax check"

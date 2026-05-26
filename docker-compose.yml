@@ -62,9 +62,6 @@ services:
         echo 'Creating topic coin-data...'
         kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic coin-data --partitions 3 --replication-factor 1
         echo 'Topic coin-data has been created.'
-        echo 'Creating topic coin-model-data...'
-        kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic coin-model-data --partitions 3 --replication-factor 1
-        echo 'Topic coin-model-data has been created.'
       "
     networks:
       - ie212_pipeline
@@ -85,26 +82,6 @@ services:
     networks:
       - ie212_pipeline
     logging: *default-logging
-
-  # Cassandra setup database
-  # cassandra:
-  #   image: cassandra:latest
-  #   container_name: cassandra
-  #   ports:
-  #     - "9042:9042"
-  #   environment:
-  #     - CASSANDRA_CLUSTER_NAME=coinbase_cluster
-  #     - CASSANDRA_KEYSPACE=coinbase
-  #   volumes:
-  #     - cassandra-data:/var/lib/cassandra
-  #   networks:
-  #     - ie212_pipeline
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "nodetool status | grep -q '^UN'"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 5
-  #     start_period: 30s
 
   # Cassandra setup database
   cassandra:
@@ -150,34 +127,6 @@ services:
     networks:
       - ie212_pipeline
     logging: *default-logging
-
-  # Cassandra setup - create keyspace and tables
-  # cassandra-setup:
-  #   image: cassandra:latest
-  #   container_name: cassandra-setup
-  #   depends_on:
-  #     cassandra:
-  #       condition: service_healthy
-  #   command: >
-  #     bash -c "
-  #       echo 'Waiting for Cassandra to be ready...'
-  #       sleep 10
-  #       echo 'creating keyspace...'
-  #       cqlsh cassandra -e \"CREATE KEYSPACE IF NOT EXISTS coinbase WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};\"
-  #       echo 'creating prices table...'
-  #       cqlsh cassandra -e \"CREATE TABLE IF NOT EXISTS coinbase.prices (product_id TEXT, time TIMESTAMP, price DOUBLE, PRIMARY KEY (product_id, time));\"
-  #       echo 'prices table created!'
-  #       echo 'creating candles table...'
-  #       cqlsh cassandra -e \"CREATE TABLE IF NOT EXISTS coinbase.candles ( product_id TEXT, start_time TIMESTAMP, end_time TIMESTAMP,open DOUBLE, high DOUBLE, low DOUBLE, close DOUBLE, volume DOUBLE, candle_size TEXT, channel TEXT, PRIMARY KEY (product_id, start_time));\"
-  #       echo 'candles table created!'
-  #       echo 'cassandra setup complete!'
-  #       echo "Creating prediction table in Cassandra..."
-  #       cqlsh cassandra -e "CREATE TABLE IF NOT EXISTS coinbase.predictions (product_id TEXT, model_name TEXT, prediction_time TIMESTAMP, target_time TIMESTAMP, predicted_price DOUBLE, PRIMARY KEY ((product_id, model_name), prediction_time, target_time));\"
-  #       echo "Prediction table created!"
-  #       echo 'Cassandra setup complete!'
-  #     "
-  #   networks:
-  #     - ie212_pipeline
 
   # S3 compatible storage (MinIO)
   minio:
@@ -286,42 +235,81 @@ services:
     restart: unless-stopped
     logging: *default-logging
     
-  # Prediction service
-  price-predictor:
+  # MLflow tracking for CPU ML experiments and model comparison
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    profiles:
+      - mlops
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --artifacts-destination /mlflow/artifacts
+      --allowed-hosts "localhost:*,127.0.0.1:*,mlflow:5000"
+    ports:
+      - "${MLFLOW_PORT:-5000}:5000"
+    volumes:
+      - mlflow-data:/mlflow
+    networks:
+      - ie212_pipeline
+    restart: unless-stopped
+    logging: *default-logging
+
+  # BentoML service for CPU-friendly LightGBM price prediction
+  bento-price-predictor:
     build:
       context: .
-      dockerfile: ./prediction_service/prediction.Dockerfile
-    container_name: price-predictor
+      dockerfile: ./mlops/bento.Dockerfile
+    container_name: bento-price-predictor
+    profiles:
+      - mlops
     environment:
-      - CASSANDRA_HOSTS=${PREDICTOR_CASSANDRA_HOSTS:-cassandra}
-      - CASSANDRA_PORT=${CASSANDRA_PORT:-9042}
-      - CASSANDRA_KEYSPACE=${CASSANDRA_KEYSPACE:-coinbase}
-      - PRODUCT_IDS=${PRODUCT_IDS:-BTC-USD,ETH-USD,XRP-USD}
-      - PREDICTION_INTERVAL=${PREDICTION_INTERVAL:-300}
-      - MODEL_CONFIG_PATH=${MODEL_CONFIG_PATH:-/app/model/configs/train_config.yaml}
-      - MODEL_CHECKPOINT_PATH=${MODEL_CHECKPOINT_PATH:-/app/model/checkpoints/best_epoch_16.pt}
-      - MODEL_NAME=${MODEL_NAME:-lstm_model_v1}
-      - MODEL_VERSION=${MODEL_VERSION:-1.0}
-      - DEVICE=${DEVICE:-cpu}
-      - ENABLE_HEALTH_CHECK=${ENABLE_HEALTH_CHECK:-true}
-      - MODEL_TYPE=${MODEL_TYPE:-lstm}
+      - MLOPS_MODEL_PATH=/models/coinbase_ml_model.joblib
+      - MLOPS_MODEL_URI=${MLOPS_MODEL_URI:-}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      - BENTOML_MODEL_TAG=${BENTOML_MODEL_TAG:-coinbase_price_lightgbm:latest}
+      - MLOPS_HORIZON=${MLOPS_HORIZON:-4}
+      - MLOPS_FREQ_MINUTES=${MLOPS_FREQ_MINUTES:-60}
     ports:
-      - "${PREDICTION_SERVICE_PORT:-8000}:8000"  # Health check port
+      - "${BENTO_SERVICE_PORT:-3001}:3000"
+    volumes:
+      - ./artifacts/mlops:/models:ro
     depends_on:
-      cassandra-migrate:
-        condition: service_completed_successfully
+      - mlflow
     networks:
       - ie212_pipeline
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/readyz"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 30s
+    logging: *default-logging
+
+  # Local Jenkins controller for CI/CD experiments. Start with COMPOSE_PROFILES=ci.
+  jenkins:
+    build:
+      context: .
+      dockerfile: ./ops/jenkins/jenkins.Dockerfile
+    container_name: jenkins
+    profiles:
+      - ci
+    user: root
+    ports:
+      - "${JENKINS_PORT:-8088}:8080"
+      - "${JENKINS_AGENT_PORT:-50000}:50000"
+    environment:
+      - JAVA_OPTS=${JENKINS_JAVA_OPTS:--Djenkins.install.runSetupWizard=true}
     volumes:
-      - prediction-logs:/app/logs
-      - ./Crypto-TS-Model-master:/app/model:ro  # Mount model files as read-only
+      - jenkins-data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./:/workspace/Coinbase_Streaming
+    networks:
+      - ie212_pipeline
+    restart: unless-stopped
     logging: *default-logging
 
   # Grafana for visualization
@@ -461,7 +449,8 @@ volumes:
   cassandra-data:
   minio-data:
   grafana-data:
-  prediction-logs:
+  jenkins-data:
+  mlflow-data:
   prometheus-data:
   alertmanager-data:
   loki-data:

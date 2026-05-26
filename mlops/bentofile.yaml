@@ -1,0 +1,8 @@
+service: "mlops.service:CoinbasePriceService"
+description: "CPU LightGBM price predictor for the Coinbase streaming pipeline"
+include:
+  - "mlops/**/*.py"
+python:
+  requirements_txt: "mlops/requirements.txt"
+docker:
+  python_version: "3.12"

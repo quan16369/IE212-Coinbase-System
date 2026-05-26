@@ -3,6 +3,12 @@ spark-3.5.5
 kafka_2.13-4.0.0
 .env
 backups/
+artifacts/*
+!artifacts/mlops/
+!artifacts/mlops/.gitkeep
+mlruns/
+mlflow.db
+bentoml/
 test.py
 __pycache__/
 *.pyc
