@@ -10,6 +10,8 @@ pipeline {
   parameters {
     booleanParam(name: 'BUILD_ALL_IMAGES', defaultValue: false, description: 'Build every Docker Compose image.')
     booleanParam(name: 'BUILD_MLOPS_IMAGE', defaultValue: true, description: 'Build the BentoML predictor image.')
+    booleanParam(name: 'PUSH_BENTO_IMAGE', defaultValue: false, description: 'Push the BentoML image to GCP Artifact Registry.')
+    string(name: 'IMAGE_TAG', defaultValue: '', description: 'Optional image tag. If empty, Jenkins uses build-${BUILD_NUMBER}.')
     booleanParam(name: 'TRAIN_MLOPS_MODEL', defaultValue: false, description: 'Train the CPU ML model during this build.')
     string(name: 'MLOPS_TRAINING_CSV', defaultValue: '', description: 'Optional override. If empty, Jenkins uses MLOPS_TRAINING_CSV from .env.')
     booleanParam(name: 'PROMOTE_MODEL', defaultValue: false, description: 'Promote an MLflow registered model version to an alias.')
@@ -104,6 +106,31 @@ pipeline {
       steps {
         dir('/workspace/Coinbase_Streaming') {
           sh 'COMPOSE_PROFILES=mlops docker compose --env-file "$ENV_FILE" build bento-price-predictor'
+        }
+      }
+    }
+
+    stage('Push BentoML Image') {
+      when {
+        expression { return params.PUSH_BENTO_IMAGE }
+      }
+      steps {
+        dir('/workspace/Coinbase_Streaming') {
+          sh '''
+            PARAM_IMAGE_TAG="$IMAGE_TAG"
+
+            set -a
+            . "./$ENV_FILE"
+            set +a
+
+            IMAGE_TAG="$PARAM_IMAGE_TAG"
+            if [ -z "$IMAGE_TAG" ]; then
+              IMAGE_TAG="build-${BUILD_NUMBER}"
+            fi
+
+            IMAGE_TAG="$IMAGE_TAG" bash scripts/push_bento_image.sh
+          '''
+          archiveArtifacts artifacts: 'artifacts/mlops/bento_image_uri.txt', fingerprint: true, allowEmptyArchive: false
         }
       }
     }

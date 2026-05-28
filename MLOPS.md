@@ -234,6 +234,43 @@ DATA=/path/to/ohlcv.csv make mlops-test-predict
 
 For a real deployment, keep the MLflow registry as the source of promoted model versions. Build or deploy BentoML from a chosen alias or immutable model version, not from whichever training artifact happened to be written last.
 
+### Push BentoML image to Artifact Registry
+
+Use this after the local BentoML image builds successfully and Docker is authenticated to GCP Artifact Registry:
+
+```text
+BUILD_ALL_IMAGES=false
+BUILD_MLOPS_IMAGE=true
+PUSH_BENTO_IMAGE=true
+IMAGE_TAG=dev
+TRAIN_MLOPS_MODEL=false
+PROMOTE_MODEL=false
+DEPLOY_BENTO=false
+DEPLOY_COMPOSE=false
+```
+
+When `IMAGE_TAG` is empty, Jenkins uses `build-${BUILD_NUMBER}`. Jenkins archives the pushed image URI at:
+
+```text
+artifacts/mlops/bento_image_uri.txt
+```
+
+For local testing, build and push manually:
+
+```bash
+COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predictor
+IMAGE_TAG=dev make mlops-push-bento
+```
+
+Required `.env` values:
+
+```text
+GCP_PROJECT_ID=<gcp-project-id>
+GAR_LOCATION=asia-southeast1
+GAR_REPOSITORY=coinbase-mlops
+BENTO_IMAGE_NAME=coinbase-bento-price-predictor
+```
+
 ## Kubernetes path
 
 When moving to Kubernetes, keep the same boundary:
@@ -287,10 +324,12 @@ Use this checklist to keep the project focused on the MLOps path. Do not add the
 - [ ] Enable IAM API.
 - [ ] Enable Compute Engine API.
 - [ ] Create one Artifact Registry Docker repository.
+- [ ] Configure Docker authentication for Artifact Registry.
 - [ ] Create a Jenkins service account.
 - [ ] Grant the service account Artifact Registry write access.
 - [ ] Grant the service account permission to deploy to GKE.
 - [ ] Install and configure `gcloud` and `kubectl` on the Jenkins host.
+- [ ] Push the BentoML image with `PUSH_BENTO_IMAGE=true`.
 
 ### Phase 4: minimal GKE deploy
 

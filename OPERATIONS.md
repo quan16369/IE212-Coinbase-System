@@ -51,6 +51,7 @@ Pipeline stages:
 - `Build Images`: builds all Docker images.
 - `Train CPU ML Model`: trains the LightGBM model, logs to MLflow, and archives model artifacts when enabled.
 - `Build BentoML Image`: builds only the BentoML predictor image when enabled.
+- `Push BentoML Image`: tags and pushes the BentoML image to GCP Artifact Registry when enabled.
 - `Promote Model`: points an MLflow model alias, usually `champion`, at a reviewed model version.
 - `Deploy BentoML`: recreates only the BentoML predictor service.
 - `Deploy`: runs `scripts/deploy_compose.sh` only on `main` or `master`.
@@ -59,6 +60,7 @@ Optional MLOps stages are controlled by Jenkins build parameters:
 
 - `BUILD_ALL_IMAGES=true` builds every Docker Compose image.
 - `BUILD_MLOPS_IMAGE=true` builds the BentoML service image.
+- `PUSH_BENTO_IMAGE=true` pushes the BentoML image to Artifact Registry. Leave `IMAGE_TAG` empty to use `build-${BUILD_NUMBER}`.
 - `TRAIN_MLOPS_MODEL=true` trains the CPU LightGBM model. Leave `MLOPS_TRAINING_CSV` empty to use the default from `.env`.
 - `PROMOTE_MODEL=true` with `MODEL_VERSION=<version>` and `MODEL_ALIAS=champion` promotes a reviewed MLflow model version.
 - `DEPLOY_BENTO=true` rebuilds and recreates only `bento-price-predictor`.
@@ -87,6 +89,14 @@ PROMOTE_MODEL=true
 MODEL_VERSION=<version>
 MODEL_ALIAS=champion
 DEPLOY_BENTO=true
+
+Push BentoML image:
+BUILD_MLOPS_IMAGE=true
+PUSH_BENTO_IMAGE=true
+IMAGE_TAG=dev
+TRAIN_MLOPS_MODEL=false
+PROMOTE_MODEL=false
+DEPLOY_BENTO=false
 ```
 
 Training archives these files in Jenkins:
@@ -98,7 +108,44 @@ artifacts/mlops/training_summary.md
 artifacts/mlops/training_summary.json
 ```
 
+Pushing the BentoML image archives this file in Jenkins:
+
+```text
+artifacts/mlops/bento_image_uri.txt
+```
+
 For production-like usage, keep `.env` out of Git and manage the real values through Jenkins credentials, a protected file credential, or host-level secret management.
+
+## GCP Artifact Registry
+
+Create the Docker repository once from a machine with `gcloud` installed:
+
+```bash
+gcloud auth login
+gcloud config set project <gcp-project-id>
+gcloud services enable artifactregistry.googleapis.com
+gcloud artifacts repositories create coinbase-mlops \
+  --repository-format=docker \
+  --location=asia-southeast1 \
+  --description="Coinbase MLOps images"
+gcloud auth configure-docker asia-southeast1-docker.pkg.dev
+```
+
+Set these values in `.env` or Jenkins credentials before pushing:
+
+```text
+GCP_PROJECT_ID=<gcp-project-id>
+GAR_LOCATION=asia-southeast1
+GAR_REPOSITORY=coinbase-mlops
+BENTO_IMAGE_NAME=coinbase-bento-price-predictor
+```
+
+Then push from local shell:
+
+```bash
+COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predictor
+IMAGE_TAG=dev make mlops-push-bento
+```
 
 ### Local Jenkins with Compose
 

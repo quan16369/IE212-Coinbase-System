@@ -1,4 +1,4 @@
-.PHONY: ci deploy up down ps logs migrate backup restore jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-up mlops-logs mlops-test-predict
+.PHONY: ci deploy up down ps logs migrate backup restore jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict
 
 ci:
 	bash scripts/ci_check.sh
@@ -41,6 +41,9 @@ mlops-promote-model:
 
 mlops-build-bento:
 	bash scripts/build_bento.sh
+
+mlops-push-bento:
+	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$${IMAGE_TAG:-dev}}" bash scripts/push_bento_image.sh
 
 mlops-up:
 	COMPOSE_PROFILES=mlops docker compose --env-file .env up -d --build mlflow bento-price-predictor
