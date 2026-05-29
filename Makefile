@@ -1,4 +1,4 @@
-.PHONY: ci deploy up down ps logs migrate backup restore jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict
+.PHONY: ci deploy up down ps logs migrate backup restore jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-port-forward-bento
 
 ci:
 	bash scripts/ci_check.sh
@@ -53,3 +53,9 @@ mlops-logs:
 
 mlops-test-predict:
 	DATA="$(DATA)" python scripts/test_bento_predict.py
+
+gke-deploy-bento:
+	bash scripts/deploy_bento_gke.sh
+
+gke-port-forward-bento:
+	kubectl -n app port-forward svc/bento-price-predictor 3001:80

@@ -147,6 +147,36 @@ COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predicto
 IMAGE_TAG=dev make mlops-push-bento
 ```
 
+## Minimal GKE deploy
+
+After pushing the BentoML image to Artifact Registry and connecting `kubectl` to a GKE cluster, deploy the predictor only:
+
+```bash
+make gke-deploy-bento
+```
+
+This creates:
+
+- namespace `app`
+- ConfigMap `bento-model-artifact` from `artifacts/mlops/coinbase_ml_model.joblib`
+- Deployment `bento-price-predictor`
+- ClusterIP Service `bento-price-predictor`
+
+Port-forward for smoke testing:
+
+```bash
+make gke-port-forward-bento
+```
+
+Then check:
+
+```bash
+curl -s -X POST http://localhost:3001/readyz
+curl -s -X POST http://localhost:3001/health
+```
+
+This is a temporary local-model handoff for the first GKE smoke test. For production, use MLflow with durable object storage or a controlled model packaging step instead of a ConfigMap.
+
 ### Local Jenkins with Compose
 
 For local CI practice, start Jenkins with the `ci` profile:
