@@ -282,7 +282,7 @@ When moving to Kubernetes, keep the same boundary:
 
 ### Minimal GKE BentoML deploy
 
-The first GKE step deploys only the BentoML predictor into namespace `app`. It uses the image pushed to Artifact Registry and mounts the current local model artifact as a Kubernetes ConfigMap. This is intentionally minimal for smoke testing; later MLflow on GKE should replace the ConfigMap model handoff.
+The first GKE step deploys only the BentoML predictor into namespace `app`. It uses the image pushed to Artifact Registry, creates a model ConfigMap from the current local artifact, and installs the predictor with the Helm chart in `charts/bento-price-predictor`. This is intentionally minimal for smoke testing; later MLflow on GKE should replace the ConfigMap model handoff.
 
 Create or connect to a GKE cluster, then deploy:
 
@@ -290,7 +290,7 @@ Create or connect to a GKE cluster, then deploy:
 make gke-deploy-bento
 ```
 
-The script reads the image URI from:
+The script creates or updates `bento-model-artifact`, then runs `helm upgrade --install`. It reads the image URI from:
 
 ```text
 artifacts/mlops/bento_image_uri.txt
@@ -321,6 +321,13 @@ Then test prediction from another terminal:
 
 ```bash
 DATA=/path/to/ohlcv.csv make mlops-test-predict
+```
+
+Validate the Helm chart without a cluster:
+
+```bash
+helm lint charts/bento-price-predictor
+make helm-template-bento
 ```
 
 ## Roadmap checklist

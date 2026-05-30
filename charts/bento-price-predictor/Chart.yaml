@@ -1,0 +1,6 @@
+apiVersion: v2
+name: bento-price-predictor
+description: BentoML LightGBM price predictor
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bento-price-predictor.fullname" . }}
+  labels:
+    {{- include "bento-price-predictor.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "bento-price-predictor.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "bento-price-predictor.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ include "bento-price-predictor.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: MLOPS_MODEL_PATH
+              value: "/models/{{ .Values.model.fileName }}"
+            - name: MLOPS_MODEL_URI
+              value: ""
+            - name: MLOPS_HORIZON
+              value: "4"
+            - name: MLOPS_FREQ_MINUTES
+              value: "60"
+          volumeMounts:
+            - name: model-artifact
+              mountPath: /models
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: model-artifact
+          configMap:
+            name: {{ .Values.model.configMapName }}

@@ -5,6 +5,8 @@ ENV_FILE="${ENV_FILE:-.env}"
 NAMESPACE="${K8S_NAMESPACE:-app}"
 MODEL_ARTIFACT="${MODEL_ARTIFACT:-artifacts/mlops/coinbase_ml_model.joblib}"
 IMAGE_URI="${IMAGE_URI:-}"
+HELM_RELEASE="${HELM_RELEASE:-bento-price-predictor}"
+HELM_CHART="${HELM_CHART:-charts/bento-price-predictor}"
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a
@@ -32,10 +34,8 @@ if [[ ! -f "$MODEL_ARTIFACT" ]]; then
   exit 1
 fi
 
-TMP_DEPLOYMENT="$(mktemp)"
-trap 'rm -f "$TMP_DEPLOYMENT"' EXIT
-
-sed "s|IMAGE_PLACEHOLDER|${IMAGE_URI}|g" k8s/bento/deployment.yaml > "$TMP_DEPLOYMENT"
+IMAGE_REPOSITORY="${IMAGE_URI%:*}"
+IMAGE_TAG="${IMAGE_URI##*:}"
 
 kubectl apply -f k8s/bento/namespace.yaml
 kubectl -n "$NAMESPACE" create configmap bento-model-artifact \
@@ -43,9 +43,14 @@ kubectl -n "$NAMESPACE" create configmap bento-model-artifact \
   --dry-run=client -o yaml | kubectl replace -f - 2>/dev/null || \
   kubectl -n "$NAMESPACE" create configmap bento-model-artifact \
     --from-file=coinbase_ml_model.joblib="$MODEL_ARTIFACT"
-kubectl apply -f "$TMP_DEPLOYMENT"
-kubectl apply -f k8s/bento/service.yaml
-kubectl -n "$NAMESPACE" rollout status deployment/bento-price-predictor --timeout=180s
+
+helm upgrade --install "$HELM_RELEASE" "$HELM_CHART" \
+  --namespace "$NAMESPACE" \
+  --create-namespace \
+  --set image.repository="$IMAGE_REPOSITORY" \
+  --set image.tag="$IMAGE_TAG"
+
+kubectl -n "$NAMESPACE" rollout status deployment/"$HELM_RELEASE" --timeout=180s
 
 echo "Deployed BentoML predictor image: $IMAGE_URI"
 echo "Test locally with:"

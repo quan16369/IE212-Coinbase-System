@@ -159,8 +159,16 @@ This creates:
 
 - namespace `app`
 - ConfigMap `bento-model-artifact` from `artifacts/mlops/coinbase_ml_model.joblib`
+- Helm release `bento-price-predictor`
 - Deployment `bento-price-predictor`
 - ClusterIP Service `bento-price-predictor`
+
+Validate the chart locally:
+
+```bash
+helm lint charts/bento-price-predictor
+make helm-template-bento
+```
 
 Port-forward for smoke testing:
 

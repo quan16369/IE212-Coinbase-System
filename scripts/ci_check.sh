@@ -48,6 +48,13 @@ else
   echo "go not found; skipping Go tests"
 fi
 
+if command -v helm >/dev/null 2>&1; then
+  echo "Linting Helm charts"
+  helm lint charts/bento-price-predictor
+else
+  echo "helm not found; skipping Helm chart lint"
+fi
+
 if [[ "${BUILD_IMAGES:-false}" == "true" ]]; then
   echo "Building Docker images"
   docker compose --env-file "$ENV_FILE" build
