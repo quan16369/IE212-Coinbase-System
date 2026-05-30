@@ -176,14 +176,48 @@ Port-forward for smoke testing:
 make gke-port-forward-bento
 ```
 
-Then check:
+Then check from another terminal:
 
 ```bash
-curl -s -X POST http://localhost:3001/readyz
-curl -s -X POST http://localhost:3001/health
+make gke-smoke-bento
 ```
 
 This is a temporary local-model handoff for the first GKE smoke test. For production, use MLflow with durable object storage or a controlled model packaging step instead of a ConfigMap.
+
+### Minimal GKE monitoring and logs
+
+For the first GKE version, use Kubernetes status, events, and pod logs directly. This keeps the setup small while still showing whether the predictor is healthy.
+
+Check deployment, pod, and service status:
+
+```bash
+make gke-status-bento
+```
+
+Show recent BentoML logs:
+
+```bash
+make gke-logs-bento
+```
+
+Follow BentoML logs live:
+
+```bash
+make gke-follow-logs-bento
+```
+
+Show recent namespace events when rollout or image pull fails:
+
+```bash
+make gke-events-bento
+```
+
+If local port `3001` is busy, use another local port:
+
+```bash
+PORT=3002 make gke-port-forward-bento
+PORT=3002 make gke-smoke-bento
+```
 
 ### Jenkins to GKE
 
