@@ -271,6 +271,35 @@ GAR_REPOSITORY=coinbase-mlops
 BENTO_IMAGE_NAME=coinbase-bento-price-predictor
 ```
 
+### Deploy to GKE from Jenkins
+
+Use this after the image has been pushed and `kubectl` access is configured through a Jenkins GCP service account credential:
+
+```text
+BUILD_ALL_IMAGES=false
+BUILD_MLOPS_IMAGE=false
+PUSH_BENTO_IMAGE=false
+TRAIN_MLOPS_MODEL=false
+PROMOTE_MODEL=false
+DEPLOY_BENTO=false
+DEPLOY_GKE=true
+GCP_CREDENTIALS_ID=gcp-jenkins-sa-key
+GKE_CLUSTER=coinbase-mlops
+GKE_REGION=asia-southeast1
+DEPLOY_COMPOSE=false
+```
+
+For a full image build, push, and GKE deploy run:
+
+```text
+BUILD_MLOPS_IMAGE=true
+PUSH_BENTO_IMAGE=true
+IMAGE_TAG=dev
+DEPLOY_GKE=true
+```
+
+The Jenkins credential should be a `Secret file` containing a GCP service account JSON key. For a demo, grant the service account Artifact Registry write access and enough GKE permissions to fetch cluster credentials and deploy the Helm release. Later, replace the key file with Workload Identity or a keyless Jenkins agent.
+
 ## Kubernetes path
 
 When moving to Kubernetes, keep the same boundary:
@@ -403,7 +432,7 @@ Use this checklist to keep the project focused on the MLOps path. Do not add the
 - [ ] Configure Docker authentication for Artifact Registry.
 - [ ] Tag images with the Git commit SHA.
 - [ ] Push the BentoML image to Artifact Registry.
-- [ ] Run `helm upgrade --install` from Jenkins.
+- [ ] Run `helm upgrade --install` from Jenkins with `DEPLOY_GKE=true`.
 - [ ] Deploy only from `main` or `master`.
 - [ ] Keep deploy logs in Jenkins.
 - [ ] Test rollback with `helm rollback`.

@@ -18,6 +18,10 @@ pipeline {
     string(name: 'MODEL_VERSION', defaultValue: '', description: 'Required when PROMOTE_MODEL=true. Example: 4')
     string(name: 'MODEL_ALIAS', defaultValue: 'champion', description: 'MLflow model alias to update.')
     booleanParam(name: 'DEPLOY_BENTO', defaultValue: false, description: 'Restart the BentoML predictor service after build or promotion.')
+    booleanParam(name: 'DEPLOY_GKE', defaultValue: false, description: 'Deploy the BentoML predictor to GKE with Helm.')
+    string(name: 'GCP_CREDENTIALS_ID', defaultValue: 'gcp-jenkins-sa-key', description: 'Jenkins Secret file credential ID for the GCP service account key.')
+    string(name: 'GKE_CLUSTER', defaultValue: '', description: 'GKE cluster name. If empty, Jenkins uses GKE_CLUSTER from .env.')
+    string(name: 'GKE_REGION', defaultValue: '', description: 'GKE region. If empty, Jenkins uses GKE_REGION from .env.')
     booleanParam(name: 'DEPLOY_COMPOSE', defaultValue: false, description: 'Deploy the local Compose stack after a successful build.')
   }
 
@@ -116,20 +120,31 @@ pipeline {
       }
       steps {
         dir('/workspace/Coinbase_Streaming') {
-          sh '''
-            PARAM_IMAGE_TAG="$IMAGE_TAG"
+          withCredentials([file(credentialsId: params.GCP_CREDENTIALS_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
+            sh '''
+              PARAM_IMAGE_TAG="$IMAGE_TAG"
 
-            set -a
-            . "./$ENV_FILE"
-            set +a
+              set -a
+              . "./$ENV_FILE"
+              set +a
 
-            IMAGE_TAG="$PARAM_IMAGE_TAG"
-            if [ -z "$IMAGE_TAG" ]; then
-              IMAGE_TAG="build-${BUILD_NUMBER}"
-            fi
+              IMAGE_TAG="$PARAM_IMAGE_TAG"
+              if [ -z "$IMAGE_TAG" ]; then
+                IMAGE_TAG="build-${BUILD_NUMBER}"
+              fi
 
-            IMAGE_TAG="$IMAGE_TAG" bash scripts/push_bento_image.sh
-          '''
+              if [ -z "${GCP_PROJECT_ID:-}" ] || [ -z "${GAR_LOCATION:-}" ]; then
+                echo "GCP_PROJECT_ID and GAR_LOCATION are required for PUSH_BENTO_IMAGE=true."
+                exit 1
+              fi
+
+              gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
+              gcloud config set project "$GCP_PROJECT_ID"
+              gcloud auth configure-docker "${GAR_LOCATION}-docker.pkg.dev" --quiet
+
+              IMAGE_TAG="$IMAGE_TAG" bash scripts/push_bento_image.sh
+            '''
+          }
           archiveArtifacts artifacts: 'artifacts/mlops/bento_image_uri.txt', fingerprint: true, allowEmptyArchive: false
         }
       }
@@ -173,6 +188,52 @@ pipeline {
             COMPOSE_PROFILES=mlops docker compose --env-file "$ENV_FILE" up -d --build bento-price-predictor
             docker compose --env-file "$ENV_FILE" ps bento-price-predictor
           '''
+        }
+      }
+    }
+
+    stage('Deploy GKE') {
+      when {
+        expression { return params.DEPLOY_GKE }
+      }
+      steps {
+        dir('/workspace/Coinbase_Streaming') {
+          withCredentials([file(credentialsId: params.GCP_CREDENTIALS_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
+            sh '''
+              PARAM_GKE_CLUSTER="$GKE_CLUSTER"
+              PARAM_GKE_REGION="$GKE_REGION"
+
+              set -a
+              . "./$ENV_FILE"
+              set +a
+
+              ENV_GKE_CLUSTER="${GKE_CLUSTER:-}"
+              ENV_GKE_REGION="${GKE_REGION:-}"
+
+              GKE_CLUSTER="$PARAM_GKE_CLUSTER"
+              if [ -z "$GKE_CLUSTER" ]; then
+                GKE_CLUSTER="$ENV_GKE_CLUSTER"
+              fi
+
+              GKE_REGION="$PARAM_GKE_REGION"
+              if [ -z "$GKE_REGION" ]; then
+                GKE_REGION="$ENV_GKE_REGION"
+              fi
+
+              if [ -z "${GCP_PROJECT_ID:-}" ] || [ -z "$GKE_CLUSTER" ] || [ -z "$GKE_REGION" ]; then
+                echo "GCP_PROJECT_ID, GKE_CLUSTER, and GKE_REGION are required for DEPLOY_GKE=true."
+                echo "Set them in .env or pass the Jenkins parameters."
+                exit 1
+              fi
+
+              gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
+              gcloud config set project "$GCP_PROJECT_ID"
+              gcloud container clusters get-credentials "$GKE_CLUSTER" --region="$GKE_REGION"
+              bash scripts/deploy_bento_gke.sh
+              kubectl -n app get pods
+              kubectl -n app get svc
+            '''
+          }
         }
       }
     }
