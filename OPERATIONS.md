@@ -185,6 +185,28 @@ curl -s -X POST http://localhost:3001/health
 
 This is a temporary local-model handoff for the first GKE smoke test. For production, use MLflow with durable object storage or a controlled model packaging step instead of a ConfigMap.
 
+### Jenkins to GKE
+
+The Jenkins image includes Docker CLI, Google Cloud CLI, the GKE auth plugin, `kubectl`, and Helm. Store the GCP service account JSON as a Jenkins `Secret file` credential, for example:
+
+```text
+gcp-jenkins-sa-key
+```
+
+Then run the Jenkins job with:
+
+```text
+BUILD_MLOPS_IMAGE=true
+PUSH_BENTO_IMAGE=true
+IMAGE_TAG=dev
+DEPLOY_GKE=true
+GCP_CREDENTIALS_ID=gcp-jenkins-sa-key
+GKE_CLUSTER=coinbase-mlops
+GKE_REGION=asia-southeast1
+```
+
+For local demo work, the service account can have Artifact Registry writer access and enough GKE permissions to deploy. For production, prefer keyless Workload Identity or a locked-down deploy agent.
+
 ### Local Jenkins with Compose
 
 For local CI practice, start Jenkins with the `ci` profile:
