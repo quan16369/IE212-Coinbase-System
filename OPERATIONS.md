@@ -241,6 +241,83 @@ GKE_REGION=asia-southeast1
 
 For local demo work, the service account can have Artifact Registry writer access and enough GKE permissions to deploy. For production, prefer keyless Workload Identity or a locked-down deploy agent.
 
+### GKE demo runbook
+
+Use this runbook when you want to demonstrate the Jenkins-to-GKE flow end to end.
+
+1. Confirm the current GCP project and cluster access:
+
+```bash
+gcloud config get-value project
+gcloud container clusters get-credentials coinbase-mlops --region=asia-southeast1
+make gke-status-bento
+```
+
+2. Run the Jenkins job with these parameters:
+
+```text
+BUILD_MLOPS_IMAGE=true
+PUSH_BENTO_IMAGE=true
+IMAGE_TAG=dev
+DEPLOY_GKE=true
+GCP_CREDENTIALS_ID=gcp-jenkins-sa-key
+GKE_CLUSTER=coinbase-mlops
+GKE_REGION=asia-southeast1
+```
+
+3. Verify the GKE rollout:
+
+```bash
+make gke-status-bento
+make gke-events-bento
+```
+
+The pod should show `READY 1/1`, `STATUS Running`, and low or zero restarts.
+
+4. Port-forward the internal ClusterIP service:
+
+```bash
+PORT=3010 make gke-port-forward-bento
+```
+
+Keep that terminal open. In another terminal, run:
+
+```bash
+PORT=3010 make gke-smoke-bento
+```
+
+5. Test prediction through the GKE pod:
+
+```bash
+MLOPS_PREDICT_URL=http://localhost:3010/predict \
+DATA=/home/quan/projects/Coinbase_Streaming/data/BTCUSDT_5m_full.csv \
+make mlops-test-predict
+```
+
+6. Check logs after the request:
+
+```bash
+make gke-logs-bento
+```
+
+Look for a line like:
+
+```text
+method=POST,path=/predict ... status=200
+```
+
+7. When you no longer need the demo cluster, delete it to stop GKE charges:
+
+```bash
+gcloud container clusters delete coinbase-mlops --region=asia-southeast1
+```
+
+If you also want to remove pushed images and repository storage, delete the Artifact Registry repository:
+
+```bash
+gcloud artifacts repositories delete coinbase-mlops --location=asia-southeast1
+```
+
 ### Local Jenkins with Compose
 
 For local CI practice, start Jenkins with the `ci` profile:
