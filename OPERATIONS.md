@@ -188,6 +188,22 @@ COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predicto
 make mlops-push-bento
 ```
 
+## IaC security checks
+
+Run Checkov against Terraform, Helm, and Kubernetes manifests:
+
+```bash
+make security-check
+```
+
+CI also calls the same script, but skips it when `checkov` is not installed. To make the check mandatory in a CI image, install Checkov first:
+
+```bash
+python3 -m pip install --user checkov
+```
+
+The project Jenkins image installs Checkov, so Jenkins CI runs this scan as part of `scripts/ci_check.sh`.
+
 ## Minimal GKE deploy
 
 After pushing the BentoML image to Artifact Registry and connecting `kubectl` to a GKE cluster, deploy the predictor only:

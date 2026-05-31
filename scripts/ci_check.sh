@@ -62,6 +62,8 @@ else
   echo "terraform not found; skipping Terraform checks"
 fi
 
+bash scripts/security_check.sh
+
 if [[ "${BUILD_IMAGES:-false}" == "true" ]]; then
   echo "Building Docker images"
   docker compose --env-file "$ENV_FILE" build

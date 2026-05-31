@@ -18,6 +18,9 @@ RUN apt-get update \
     && curl -fsSL "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz" -o /tmp/helm.tar.gz \
     && tar -xzf /tmp/helm.tar.gz -C /tmp \
     && install -m 0755 /tmp/linux-amd64/helm /usr/local/bin/helm \
+    && python3 -m venv /opt/checkov \
+    && /opt/checkov/bin/pip install --no-cache-dir --upgrade pip checkov \
+    && ln -s /opt/checkov/bin/checkov /usr/local/bin/checkov \
     && rm -rf /tmp/helm.tar.gz /tmp/linux-amd64 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
