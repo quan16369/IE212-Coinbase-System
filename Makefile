@@ -1,4 +1,4 @@
-.PHONY: ci deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
+.PHONY: ci deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-install-ingress-nginx gke-deploy-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
 
 ci:
 	bash scripts/ci_check.sh
@@ -65,6 +65,9 @@ mlops-logs:
 
 mlops-test-predict:
 	DATA="$(DATA)" python scripts/test_bento_predict.py
+
+gke-install-ingress-nginx:
+	bash scripts/install_ingress_nginx.sh
 
 gke-deploy-bento:
 	bash scripts/deploy_bento_gke.sh

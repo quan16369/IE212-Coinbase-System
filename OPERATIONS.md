@@ -270,11 +270,7 @@ PORT=3002 make gke-smoke-bento
 The chart defaults to `ClusterIP`, so the predictor is private inside the cluster. For a short demo with one shared public load balancer, install nginx ingress:
 
 ```bash
-helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-helm repo update
-helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-  --namespace ingress-nginx \
-  --create-namespace
+make gke-install-ingress-nginx
 ```
 
 Enable the BentoML ingress route:
