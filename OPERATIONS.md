@@ -265,24 +265,48 @@ PORT=3002 make gke-port-forward-bento
 PORT=3002 make gke-smoke-bento
 ```
 
-### Optional public GKE endpoint
+### Optional public GKE endpoint with nginx ingress
 
-The chart defaults to `ClusterIP`, so the predictor is private inside the cluster. For a short demo, expose it with a Google Cloud load balancer:
+The chart defaults to `ClusterIP`, so the predictor is private inside the cluster. For a short demo with one shared public load balancer, install nginx ingress:
+
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm repo update
+helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+  --namespace ingress-nginx \
+  --create-namespace
+```
+
+Enable the BentoML ingress route:
+
+```bash
+make gke-ingress-bento
+```
+
+Get the nginx ingress URL and test it:
+
+```bash
+BENTO_URL="$(make -s gke-ingress-url-bento)"
+curl -fsS "$BENTO_URL/readyz"
+curl -fsS -X POST "$BENTO_URL/health"
+```
+
+Prediction smoke test through ingress:
+
+```bash
+MLOPS_PREDICT_URL="$BENTO_URL/predict" \
+DATA=/home/quan/projects/Coinbase_Streaming/data/BTCUSDT_5m_full.csv \
+make mlops-test-predict
+```
+
+For a quick one-service demo without nginx, you can still expose the Bento service directly:
 
 ```bash
 make gke-expose-bento
 make gke-public-url-bento
 ```
 
-Wait until `make gke-public-url-bento` prints a real IP, then test:
-
-```bash
-BENTO_URL="$(make -s gke-public-url-bento)"
-curl -fsS "$BENTO_URL/readyz"
-curl -fsS -X POST "$BENTO_URL/health"
-```
-
-When the demo is done, switch back to the private service to remove the load balancer:
+When the direct service demo is done, switch back to the private service to remove that direct load balancer:
 
 ```bash
 make gke-unexpose-bento

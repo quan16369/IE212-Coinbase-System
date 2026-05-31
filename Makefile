@@ -1,4 +1,4 @@
-.PHONY: ci deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
+.PHONY: ci deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
 
 ci:
 	bash scripts/ci_check.sh
@@ -69,6 +69,9 @@ mlops-test-predict:
 gke-deploy-bento:
 	bash scripts/deploy_bento_gke.sh
 
+gke-ingress-bento:
+	BENTO_INGRESS_ENABLED=true bash scripts/deploy_bento_gke.sh
+
 gke-expose-bento:
 	BENTO_SERVICE_TYPE=LoadBalancer bash scripts/deploy_bento_gke.sh
 
@@ -77,6 +80,9 @@ gke-unexpose-bento:
 
 gke-public-url-bento:
 	kubectl -n app get svc bento-price-predictor -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}{"\n"}'
+
+gke-ingress-url-bento:
+	kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}{"\n"}'
 
 gke-history-bento:
 	helm -n app history bento-price-predictor

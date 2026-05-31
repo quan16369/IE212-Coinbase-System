@@ -9,6 +9,12 @@ service:
   type: ClusterIP
   port: 80
 
+ingress:
+  enabled: false
+  className: nginx
+  host: ""
+  path: /
+
 model:
   fileName: coinbase_ml_model.joblib
 

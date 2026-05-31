@@ -7,6 +7,10 @@ IMAGE_URI="${IMAGE_URI:-}"
 HELM_RELEASE="${HELM_RELEASE:-bento-price-predictor}"
 HELM_CHART="${HELM_CHART:-charts/bento-price-predictor}"
 SERVICE_TYPE="${BENTO_SERVICE_TYPE:-}"
+INGRESS_ENABLED="${BENTO_INGRESS_ENABLED:-}"
+INGRESS_CLASS="${BENTO_INGRESS_CLASS:-}"
+INGRESS_HOST="${BENTO_INGRESS_HOST:-}"
+INGRESS_PATH="${BENTO_INGRESS_PATH:-}"
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a
@@ -46,11 +50,28 @@ if [[ -n "$SERVICE_TYPE" ]]; then
   HELM_ARGS+=(--set service.type="$SERVICE_TYPE")
 fi
 
+if [[ -n "$INGRESS_ENABLED" ]]; then
+  HELM_ARGS+=(--set ingress.enabled="$INGRESS_ENABLED")
+fi
+
+if [[ -n "$INGRESS_CLASS" ]]; then
+  HELM_ARGS+=(--set ingress.className="$INGRESS_CLASS")
+fi
+
+if [[ -n "$INGRESS_HOST" ]]; then
+  HELM_ARGS+=(--set ingress.host="$INGRESS_HOST")
+fi
+
+if [[ -n "$INGRESS_PATH" ]]; then
+  HELM_ARGS+=(--set ingress.path="$INGRESS_PATH")
+fi
+
 helm upgrade --install "$HELM_RELEASE" "$HELM_CHART" "${HELM_ARGS[@]}"
 
 kubectl -n "$NAMESPACE" rollout status deployment/"$HELM_RELEASE" --timeout=180s
 
 echo "Deployed BentoML predictor image: $IMAGE_URI"
 echo "Service type: ${SERVICE_TYPE:-chart default}"
+echo "Ingress enabled: ${INGRESS_ENABLED:-chart default}"
 echo "Test locally with:"
 echo "  kubectl -n $NAMESPACE port-forward svc/bento-price-predictor 3001:80"
