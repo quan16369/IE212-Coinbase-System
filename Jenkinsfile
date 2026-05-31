@@ -9,6 +9,9 @@ pipeline {
 
   parameters {
     booleanParam(name: 'BUILD_ALL_IMAGES', defaultValue: false, description: 'Build every Docker Compose image.')
+    booleanParam(name: 'RUN_SONARQUBE_SCAN', defaultValue: false, description: 'Run SonarQube code quality scan.')
+    string(name: 'SONARQUBE_URL', defaultValue: '', description: 'SonarQube URL. If empty, Jenkins uses SONAR_HOST_URL from .env.')
+    string(name: 'SONARQUBE_TOKEN_CREDENTIALS_ID', defaultValue: 'sonarqube-token', description: 'Jenkins Secret text credential ID for SonarQube token.')
     booleanParam(name: 'BUILD_MLOPS_IMAGE', defaultValue: true, description: 'Build the BentoML predictor image.')
     booleanParam(name: 'PUSH_BENTO_IMAGE', defaultValue: false, description: 'Push the BentoML image to GCP Artifact Registry.')
     string(name: 'IMAGE_TAG', defaultValue: '', description: 'Optional image tag. If empty, Jenkins uses build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}.')
@@ -47,6 +50,39 @@ pipeline {
       steps {
         dir('/workspace/Coinbase_Streaming') {
           sh 'bash scripts/ci_check.sh'
+        }
+      }
+    }
+
+    stage('SonarQube Scan') {
+      when {
+        expression { return params.RUN_SONARQUBE_SCAN }
+      }
+      steps {
+        dir('/workspace/Coinbase_Streaming') {
+          withCredentials([string(credentialsId: params.SONARQUBE_TOKEN_CREDENTIALS_ID, variable: 'SONAR_TOKEN')]) {
+            sh '''
+              PARAM_SONARQUBE_URL="$SONARQUBE_URL"
+
+              set -a
+              . "./$ENV_FILE"
+              set +a
+              ENV_SONAR_HOST_URL="${SONAR_HOST_URL:-}"
+
+              SONAR_HOST_URL="$PARAM_SONARQUBE_URL"
+              if [ -z "$SONAR_HOST_URL" ]; then
+                SONAR_HOST_URL="$ENV_SONAR_HOST_URL"
+              fi
+
+              if [ -z "$SONAR_HOST_URL" ]; then
+                echo "SONAR_HOST_URL is required for RUN_SONARQUBE_SCAN=true."
+                echo "Set it in .env or pass the Jenkins SONARQUBE_URL parameter."
+                exit 1
+              fi
+
+              SONAR_REQUIRED=true SONAR_HOST_URL="$SONAR_HOST_URL" bash scripts/sonarqube_scan.sh
+            '''
+          }
         }
       }
     }

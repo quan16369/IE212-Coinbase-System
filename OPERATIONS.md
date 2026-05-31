@@ -204,6 +204,24 @@ CI also calls the same script, but skips it when `checkov` is not installed. To 
 python3 -m pip install --user checkov
 ```
 
+## SonarQube
+
+SonarQube is optional and runs locally with the CI profile:
+
+```bash
+COMPOSE_PROFILES=ci docker compose --env-file .env up -d sonarqube
+```
+
+Open `http://localhost:${SONARQUBE_PORT:-9002}`, log in with `admin/admin`, change the password, create a local project, and create a token.
+
+Run a scan from your machine:
+
+```bash
+SONAR_TOKEN=your-token make sonar-scan
+```
+
+In Jenkins, add the token as a Secret text credential with ID `sonarqube-token`, then run the pipeline with `RUN_SONARQUBE_SCAN=true`. Jenkins uses `SONAR_HOST_URL` from `.env` unless the `SONARQUBE_URL` parameter is set.
+
 The project Jenkins image installs Checkov, so Jenkins CI runs this scan as part of `scripts/ci_check.sh`.
 
 ## Minimal GKE deploy

@@ -310,6 +310,23 @@ services:
     restart: unless-stopped
     logging: *default-logging
 
+  # Local SonarQube for optional code quality scans. Start with COMPOSE_PROFILES=ci.
+  sonarqube:
+    image: sonarqube:lts-community
+    container_name: sonarqube
+    profiles:
+      - ci
+    ports:
+      - "${SONARQUBE_PORT:-9002}:9000"
+    volumes:
+      - sonarqube-data:/opt/sonarqube/data
+      - sonarqube-extensions:/opt/sonarqube/extensions
+      - sonarqube-logs:/opt/sonarqube/logs
+    networks:
+      - ie212_pipeline
+    restart: unless-stopped
+    logging: *default-logging
+
   # Grafana for visualization
   grafana:
     build:
@@ -448,6 +465,9 @@ volumes:
   minio-data:
   grafana-data:
   jenkins-data:
+  sonarqube-data:
+  sonarqube-extensions:
+  sonarqube-logs:
   mlflow-data:
   prometheus-data:
   alertmanager-data:
