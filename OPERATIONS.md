@@ -218,6 +218,27 @@ PORT=3002 make gke-port-forward-bento
 PORT=3002 make gke-smoke-bento
 ```
 
+### Minimal GKE rollback
+
+Each GKE deploy is a Helm release revision. Check the release history:
+
+```bash
+make gke-history-bento
+```
+
+Rollback to a previous revision:
+
+```bash
+REVISION=1 make gke-rollback-bento
+```
+
+Then confirm the rollout and running image:
+
+```bash
+make gke-status-bento
+kubectl -n app get deploy bento-price-predictor -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+```
+
 ### Jenkins to GKE
 
 The Jenkins image includes Docker CLI, Google Cloud CLI, the GKE auth plugin, `kubectl`, and Helm. Store the GCP service account JSON as a Jenkins `Secret file` credential, for example:

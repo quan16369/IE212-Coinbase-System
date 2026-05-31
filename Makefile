@@ -1,4 +1,4 @@
-.PHONY: ci deploy up down ps logs migrate backup restore jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-port-forward-bento helm-template-bento
+.PHONY: ci deploy up down ps logs migrate backup restore jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-port-forward-bento helm-template-bento
 
 ci:
 	bash scripts/ci_check.sh
@@ -56,6 +56,14 @@ mlops-test-predict:
 
 gke-deploy-bento:
 	bash scripts/deploy_bento_gke.sh
+
+gke-history-bento:
+	helm -n app history bento-price-predictor
+
+gke-rollback-bento:
+	test -n "$(REVISION)"
+	helm -n app rollback bento-price-predictor $(REVISION)
+	kubectl -n app rollout status deployment/bento-price-predictor --timeout=180s
 
 gke-status-bento:
 	kubectl -n app get deploy,po,svc -l app.kubernetes.io/name=bento-price-predictor
