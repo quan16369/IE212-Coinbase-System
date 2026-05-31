@@ -55,6 +55,13 @@ else
   echo "helm not found; skipping Helm chart lint"
 fi
 
+if command -v terraform >/dev/null 2>&1; then
+  echo "Checking Terraform formatting"
+  terraform -chdir=infra/terraform fmt -check
+else
+  echo "terraform not found; skipping Terraform checks"
+fi
+
 if [[ "${BUILD_IMAGES:-false}" == "true" ]]; then
   echo "Building Docker images"
   docker compose --env-file "$ENV_FILE" build

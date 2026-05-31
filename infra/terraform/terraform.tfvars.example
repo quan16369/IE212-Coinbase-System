@@ -1,0 +1,10 @@
+project_id = "awesome-pilot-494017-u5"
+region     = "asia-southeast1"
+
+artifact_repository_id = "coinbase-mlops"
+gke_cluster_name       = "coinbase-mlops"
+
+jenkins_service_account_id = "jenkins-deployer"
+
+# Local demo only. Prefer Workload Identity or another keyless path for production.
+create_jenkins_key = false

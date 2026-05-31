@@ -116,9 +116,50 @@ artifacts/mlops/bento_image_uri.txt
 
 For production-like usage, keep `.env` out of Git and manage the real values through Jenkins credentials, a protected file credential, or host-level secret management.
 
+## GCP base infrastructure with Terraform
+
+The reproducible setup path is under `infra/terraform`. It creates:
+
+- required GCP APIs
+- Artifact Registry Docker repository
+- GKE Autopilot cluster
+- Jenkins deployer service account
+- IAM bindings for image push and GKE deploy
+
+Use it instead of ad hoc `gcloud` commands when you want to recreate the environment:
+
+```bash
+cd infra/terraform
+cp terraform.tfvars.example terraform.tfvars
+gcloud auth application-default login
+terraform init
+terraform plan
+terraform apply
+```
+
+If you already created the demo GKE cluster, Artifact Registry repository, or Jenkins service account manually, import or delete those resources before `terraform apply`; otherwise Terraform will try to create resources with names that already exist. See `infra/terraform/README.md` for import examples.
+
+From the repository root, the helper targets are:
+
+```bash
+make terraform-fmt
+make terraform-init
+make terraform-validate
+make terraform-plan
+```
+
+For a local Jenkins demo that still uses a JSON key, set `create_jenkins_key = true` in `terraform.tfvars`, apply, then create the Jenkins `Secret file` from:
+
+```bash
+cd infra/terraform
+terraform output -raw jenkins_service_account_key_json_base64 | base64 -d > jenkins-deployer.json
+```
+
+For production, keep `create_jenkins_key = false` and use keyless authentication.
+
 ## GCP Artifact Registry
 
-Create the Docker repository once from a machine with `gcloud` installed:
+If you are not using Terraform yet, create the Docker repository once from a machine with `gcloud` installed:
 
 ```bash
 gcloud auth login

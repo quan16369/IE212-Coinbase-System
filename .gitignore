@@ -16,3 +16,10 @@ Final.code-workspace
 model_producer.py
 cacandles_processor.Dockerfile
 candles_processor.py
+
+# Terraform local state and provider cache
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example

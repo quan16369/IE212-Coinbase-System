@@ -1,4 +1,4 @@
-.PHONY: ci deploy up down ps logs migrate backup restore jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
+.PHONY: ci deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
 
 ci:
 	bash scripts/ci_check.sh
@@ -26,6 +26,18 @@ backup:
 
 restore:
 	bash scripts/restore_cassandra.sh $(ARCHIVE)
+
+terraform-fmt:
+	terraform -chdir=infra/terraform fmt
+
+terraform-init:
+	terraform -chdir=infra/terraform init
+
+terraform-validate:
+	terraform -chdir=infra/terraform validate
+
+terraform-plan:
+	terraform -chdir=infra/terraform plan
 
 jenkins-up:
 	COMPOSE_PROFILES=ci docker compose --env-file .env up -d jenkins
