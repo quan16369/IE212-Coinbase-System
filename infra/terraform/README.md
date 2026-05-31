@@ -66,3 +66,11 @@ To stop GKE charges:
 ```bash
 terraform destroy
 ```
+
+From the repository root:
+
+```bash
+make terraform-destroy
+```
+
+This also removes the Terraform-managed Artifact Registry repository and Jenkins deployer service account. Export or keep any images you still need before destroying the repository.

@@ -332,6 +332,37 @@ When the direct service demo is done, switch back to the private service to remo
 make gke-unexpose-bento
 ```
 
+### Cleanup to control GCP cost
+
+At the end of a demo, remove public load balancers first:
+
+```bash
+make gke-unexpose-bento
+make gke-uninstall-ingress-nginx
+```
+
+If you no longer need the BentoML workload in the cluster:
+
+```bash
+make gke-delete-bento
+```
+
+To stop GKE cluster charges entirely, destroy the Terraform-managed GCP resources:
+
+```bash
+cd /home/quan/projects/Coinbase_Streaming
+make terraform-destroy
+```
+
+Before destroying, confirm Terraform is using the expected project:
+
+```bash
+cd infra/terraform
+terraform plan
+```
+
+`terraform destroy` removes the GKE cluster, Artifact Registry repository, and Jenkins deployer service account managed by Terraform. Do not run it if you still need the pushed Docker images or the live demo endpoint.
+
 ### Minimal GKE rollback
 
 Each GKE deploy is a Helm release revision. Check the release history:

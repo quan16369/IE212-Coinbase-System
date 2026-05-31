@@ -1,4 +1,4 @@
-.PHONY: ci deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-install-ingress-nginx gke-deploy-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
+.PHONY: ci deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate terraform-destroy jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-install-ingress-nginx gke-uninstall-ingress-nginx gke-deploy-bento gke-delete-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
 
 ci:
 	bash scripts/ci_check.sh
@@ -39,6 +39,9 @@ terraform-validate:
 terraform-plan:
 	terraform -chdir=infra/terraform plan
 
+terraform-destroy:
+	terraform -chdir=infra/terraform destroy
+
 jenkins-up:
 	COMPOSE_PROFILES=ci docker compose --env-file .env up -d jenkins
 
@@ -69,8 +72,14 @@ mlops-test-predict:
 gke-install-ingress-nginx:
 	bash scripts/install_ingress_nginx.sh
 
+gke-uninstall-ingress-nginx:
+	helm -n ingress-nginx uninstall ingress-nginx
+
 gke-deploy-bento:
 	bash scripts/deploy_bento_gke.sh
+
+gke-delete-bento:
+	helm -n app uninstall bento-price-predictor
 
 gke-ingress-bento:
 	BENTO_INGRESS_ENABLED=true bash scripts/deploy_bento_gke.sh
