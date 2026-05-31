@@ -9,7 +9,6 @@ locals {
   jenkins_roles = toset([
     "roles/artifactregistry.writer",
     "roles/container.developer",
-    "roles/viewer",
   ])
 }
 
@@ -44,6 +43,8 @@ resource "google_container_cluster" "mlops" {
   release_channel {
     channel = "REGULAR"
   }
+
+  resource_labels = var.labels
 
   deletion_protection = false
 

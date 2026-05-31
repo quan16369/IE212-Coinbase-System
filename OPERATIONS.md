@@ -196,6 +196,8 @@ Run Checkov against Terraform, Helm, and Kubernetes manifests:
 make security-check
 ```
 
+Known demo exceptions are documented in `.checkov.yaml`. Keep that file small; when a skipped check becomes part of the production scope, remove the skip and implement the control.
+
 CI also calls the same script, but skips it when `checkov` is not installed. To make the check mandatory in a CI image, install Checkov first:
 
 ```bash

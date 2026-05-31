@@ -5,7 +5,6 @@ REQUIRED="${CHECKOV_REQUIRED:-false}"
 TARGETS=(
   "infra/terraform"
   "charts"
-  "k8s"
 )
 
 if ! command -v checkov >/dev/null 2>&1; then

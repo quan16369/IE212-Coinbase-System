@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "bento-price-predictor.fullname" . }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
   labels:
     {{- include "bento-price-predictor.labels" . | nindent 4 }}
 spec:
@@ -14,10 +15,15 @@ spec:
       labels:
         {{- include "bento-price-predictor.selectorLabels" . | nindent 8 }}
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: {{ include "bento-price-predictor.name" . }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:
             - name: http
               containerPort: 3000
@@ -30,6 +36,10 @@ spec:
               value: "4"
             - name: MLOPS_FREQ_MINUTES
               value: "60"
+            - name: HOME
+              value: "/tmp"
+            - name: BENTOML_HOME
+              value: "/tmp/bentoml"
           readinessProbe:
             httpGet:
               path: /readyz

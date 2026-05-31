@@ -3,6 +3,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: {{ include "bento-price-predictor.fullname" . }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
   labels:
     {{- include "bento-price-predictor.labels" . | nindent 4 }}
 spec:

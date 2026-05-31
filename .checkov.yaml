@@ -1,0 +1,27 @@
+skip-check:
+  # Demo Artifact Registry uses Google-managed encryption. CMEK/CSEK adds key
+  # management overhead that is not needed for this local MLOps demo.
+  - CKV_GCP_84
+
+  # These GKE controls are valid production hardening items. This project keeps
+  # the first GKE version intentionally small with Autopilot, public API access,
+  # and no custom VPC/network policy/Binary Authorization setup yet.
+  - CKV_GCP_12
+  - CKV_GCP_13
+  - CKV_GCP_20
+  - CKV_GCP_23
+  - CKV_GCP_25
+  - CKV_GCP_61
+  - CKV_GCP_64
+  - CKV_GCP_65
+  - CKV_GCP_66
+  - CKV_GCP_69
+
+  # The demo image is pinned by CI-generated immutable tag, not by digest yet.
+  # Digest pinning can be added when image promotion is registry-driven.
+  - CKV_K8S_43
+
+  # BentoML/Python may need a writable runtime filesystem for temporary files.
+  # Keep this as a tracked exception until the service is validated with
+  # readOnlyRootFilesystem and explicit writable emptyDir mounts.
+  - CKV_K8S_22
