@@ -6,6 +6,7 @@ NAMESPACE="${K8S_NAMESPACE:-app}"
 IMAGE_URI="${IMAGE_URI:-}"
 HELM_RELEASE="${HELM_RELEASE:-bento-price-predictor}"
 HELM_CHART="${HELM_CHART:-charts/bento-price-predictor}"
+SERVICE_TYPE="${BENTO_SERVICE_TYPE:-}"
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a
@@ -34,14 +35,22 @@ IMAGE_TAG="${IMAGE_URI##*:}"
 kubectl apply -f k8s/bento/namespace.yaml
 kubectl -n "$NAMESPACE" delete configmap bento-model-artifact --ignore-not-found
 
-helm upgrade --install "$HELM_RELEASE" "$HELM_CHART" \
-  --namespace "$NAMESPACE" \
-  --create-namespace \
-  --set image.repository="$IMAGE_REPOSITORY" \
+HELM_ARGS=(
+  --namespace "$NAMESPACE"
+  --create-namespace
+  --set image.repository="$IMAGE_REPOSITORY"
   --set image.tag="$IMAGE_TAG"
+)
+
+if [[ -n "$SERVICE_TYPE" ]]; then
+  HELM_ARGS+=(--set service.type="$SERVICE_TYPE")
+fi
+
+helm upgrade --install "$HELM_RELEASE" "$HELM_CHART" "${HELM_ARGS[@]}"
 
 kubectl -n "$NAMESPACE" rollout status deployment/"$HELM_RELEASE" --timeout=180s
 
 echo "Deployed BentoML predictor image: $IMAGE_URI"
+echo "Service type: ${SERVICE_TYPE:-chart default}"
 echo "Test locally with:"
 echo "  kubectl -n $NAMESPACE port-forward svc/bento-price-predictor 3001:80"

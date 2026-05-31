@@ -224,6 +224,29 @@ PORT=3002 make gke-port-forward-bento
 PORT=3002 make gke-smoke-bento
 ```
 
+### Optional public GKE endpoint
+
+The chart defaults to `ClusterIP`, so the predictor is private inside the cluster. For a short demo, expose it with a Google Cloud load balancer:
+
+```bash
+make gke-expose-bento
+make gke-public-url-bento
+```
+
+Wait until `make gke-public-url-bento` prints a real IP, then test:
+
+```bash
+BENTO_URL="$(make -s gke-public-url-bento)"
+curl -fsS "$BENTO_URL/readyz"
+curl -fsS -X POST "$BENTO_URL/health"
+```
+
+When the demo is done, switch back to the private service to remove the load balancer:
+
+```bash
+make gke-unexpose-bento
+```
+
 ### Minimal GKE rollback
 
 Each GKE deploy is a Helm release revision. Check the release history:
