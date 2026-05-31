@@ -234,6 +234,30 @@ Check deployment, pod, and service status:
 make gke-status-bento
 ```
 
+Show a compact operational snapshot:
+
+```bash
+make gke-observe-bento
+```
+
+Check nginx ingress and the Bento ingress route:
+
+```bash
+make gke-ingress-status-bento
+```
+
+Describe the deployment and pod when readiness, image pull, or scheduling fails:
+
+```bash
+make gke-describe-bento
+```
+
+Show pod CPU and memory usage when metrics are available:
+
+```bash
+make gke-top-bento
+```
+
 Show recent BentoML logs:
 
 ```bash

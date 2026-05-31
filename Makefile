@@ -1,4 +1,4 @@
-.PHONY: ci deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-install-ingress-nginx gke-deploy-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
+.PHONY: ci deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-install-ingress-nginx gke-deploy-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
 
 ci:
 	bash scripts/ci_check.sh
@@ -96,7 +96,21 @@ gke-rollback-bento:
 	kubectl -n app rollout status deployment/bento-price-predictor --timeout=180s
 
 gke-status-bento:
-	kubectl -n app get deploy,po,svc -l app.kubernetes.io/name=bento-price-predictor
+	kubectl -n app get deploy,po,svc,ingress -l app.kubernetes.io/name=bento-price-predictor -o wide
+
+gke-describe-bento:
+	kubectl -n app describe deploy/bento-price-predictor
+	kubectl -n app describe pod -l app.kubernetes.io/name=bento-price-predictor
+
+gke-top-bento:
+	kubectl -n app top pod -l app.kubernetes.io/name=bento-price-predictor
+
+gke-ingress-status-bento:
+	kubectl -n ingress-nginx get deploy,po,svc -l app.kubernetes.io/name=ingress-nginx -o wide
+	kubectl -n app get ingress bento-price-predictor -o wide
+
+gke-observe-bento:
+	bash scripts/observe_bento_gke.sh
 
 gke-logs-bento:
 	kubectl -n app logs deploy/bento-price-predictor --tail=$${TAIL:-120}
