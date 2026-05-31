@@ -158,7 +158,6 @@ make gke-deploy-bento
 This creates:
 
 - namespace `app`
-- ConfigMap `bento-model-artifact` from `artifacts/mlops/coinbase_ml_model.joblib`
 - Helm release `bento-price-predictor`
 - Deployment `bento-price-predictor`
 - ClusterIP Service `bento-price-predictor`
@@ -182,7 +181,7 @@ Then check from another terminal:
 make gke-smoke-bento
 ```
 
-This is a temporary local-model handoff for the first GKE smoke test. For production, use MLflow with durable object storage or a controlled model packaging step instead of a ConfigMap.
+The model artifact is packaged into the BentoML image during Docker build. Train the model before building the image when you want to deploy a fresh model.
 
 ### Minimal GKE monitoring and logs
 

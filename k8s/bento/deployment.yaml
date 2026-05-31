@@ -31,10 +31,6 @@ spec:
               value: "4"
             - name: MLOPS_FREQ_MINUTES
               value: "60"
-          volumeMounts:
-            - name: model-artifact
-              mountPath: /models
-              readOnly: true
           readinessProbe:
             httpGet:
               path: /readyz
@@ -58,7 +54,3 @@ spec:
             limits:
               cpu: "1"
               memory: 1Gi
-      volumes:
-        - name: model-artifact
-          configMap:
-            name: bento-model-artifact

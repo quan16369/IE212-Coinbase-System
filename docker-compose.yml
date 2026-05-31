@@ -274,8 +274,6 @@ services:
       - MLOPS_FREQ_MINUTES=${MLOPS_FREQ_MINUTES:-60}
     ports:
       - "${BENTO_SERVICE_PORT:-3001}:3000"
-    volumes:
-      - ./artifacts/mlops:/models:ro
     depends_on:
       - mlflow
     networks:

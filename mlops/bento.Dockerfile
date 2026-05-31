@@ -12,6 +12,7 @@ COPY mlops/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY mlops/ ./mlops/
+COPY artifacts/mlops/coinbase_ml_model.joblib /models/coinbase_ml_model.joblib
 
 ENV PYTHONPATH=/app
 ENV MLOPS_MODEL_PATH=/models/coinbase_ml_model.joblib

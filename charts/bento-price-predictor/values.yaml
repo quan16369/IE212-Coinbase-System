@@ -10,7 +10,6 @@ service:
   port: 80
 
 model:
-  configMapName: bento-model-artifact
   fileName: coinbase_ml_model.joblib
 
 resources:

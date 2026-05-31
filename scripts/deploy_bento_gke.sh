@@ -3,7 +3,6 @@ set -euo pipefail
 
 ENV_FILE="${ENV_FILE:-.env}"
 NAMESPACE="${K8S_NAMESPACE:-app}"
-MODEL_ARTIFACT="${MODEL_ARTIFACT:-artifacts/mlops/coinbase_ml_model.joblib}"
 IMAGE_URI="${IMAGE_URI:-}"
 HELM_RELEASE="${HELM_RELEASE:-bento-price-predictor}"
 HELM_CHART="${HELM_CHART:-charts/bento-price-predictor}"
@@ -28,21 +27,11 @@ if [[ -z "$IMAGE_URI" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$MODEL_ARTIFACT" ]]; then
-  echo "Model artifact not found: $MODEL_ARTIFACT"
-  echo "Train the model first or set MODEL_ARTIFACT to a local .joblib file."
-  exit 1
-fi
-
 IMAGE_REPOSITORY="${IMAGE_URI%:*}"
 IMAGE_TAG="${IMAGE_URI##*:}"
 
 kubectl apply -f k8s/bento/namespace.yaml
-kubectl -n "$NAMESPACE" create configmap bento-model-artifact \
-  --from-file=coinbase_ml_model.joblib="$MODEL_ARTIFACT" \
-  --dry-run=client -o yaml | kubectl replace -f - 2>/dev/null || \
-  kubectl -n "$NAMESPACE" create configmap bento-model-artifact \
-    --from-file=coinbase_ml_model.joblib="$MODEL_ARTIFACT"
+kubectl -n "$NAMESPACE" delete configmap bento-model-artifact --ignore-not-found
 
 helm upgrade --install "$HELM_RELEASE" "$HELM_CHART" \
   --namespace "$NAMESPACE" \

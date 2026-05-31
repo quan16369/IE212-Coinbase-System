@@ -30,10 +30,6 @@ spec:
               value: "4"
             - name: MLOPS_FREQ_MINUTES
               value: "60"
-          volumeMounts:
-            - name: model-artifact
-              mountPath: /models
-              readOnly: true
           readinessProbe:
             httpGet:
               path: /readyz
@@ -52,7 +48,3 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      volumes:
-        - name: model-artifact
-          configMap:
-            name: {{ .Values.model.configMapName }}
