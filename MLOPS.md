@@ -242,14 +242,14 @@ Use this after the local BentoML image builds successfully and Docker is authent
 BUILD_ALL_IMAGES=false
 BUILD_MLOPS_IMAGE=true
 PUSH_BENTO_IMAGE=true
-IMAGE_TAG=dev
+IMAGE_TAG=
 TRAIN_MLOPS_MODEL=false
 PROMOTE_MODEL=false
 DEPLOY_BENTO=false
 DEPLOY_COMPOSE=false
 ```
 
-When `IMAGE_TAG` is empty, Jenkins uses `build-${BUILD_NUMBER}`. Jenkins archives the pushed image URI at:
+When `IMAGE_TAG` is empty, Jenkins uses `build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}`. Jenkins archives the pushed image URI at:
 
 ```text
 artifacts/mlops/bento_image_uri.txt
@@ -259,7 +259,7 @@ For local testing, build and push manually:
 
 ```bash
 COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predictor
-IMAGE_TAG=dev make mlops-push-bento
+make mlops-push-bento
 ```
 
 Required `.env` values:
@@ -294,7 +294,7 @@ For a full image build, push, and GKE deploy run:
 ```text
 BUILD_MLOPS_IMAGE=true
 PUSH_BENTO_IMAGE=true
-IMAGE_TAG=dev
+IMAGE_TAG=
 DEPLOY_GKE=true
 ```
 

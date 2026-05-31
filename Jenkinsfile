@@ -11,7 +11,7 @@ pipeline {
     booleanParam(name: 'BUILD_ALL_IMAGES', defaultValue: false, description: 'Build every Docker Compose image.')
     booleanParam(name: 'BUILD_MLOPS_IMAGE', defaultValue: true, description: 'Build the BentoML predictor image.')
     booleanParam(name: 'PUSH_BENTO_IMAGE', defaultValue: false, description: 'Push the BentoML image to GCP Artifact Registry.')
-    string(name: 'IMAGE_TAG', defaultValue: '', description: 'Optional image tag. If empty, Jenkins uses build-${BUILD_NUMBER}.')
+    string(name: 'IMAGE_TAG', defaultValue: '', description: 'Optional image tag. If empty, Jenkins uses build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}.')
     booleanParam(name: 'TRAIN_MLOPS_MODEL', defaultValue: false, description: 'Train the CPU ML model during this build.')
     string(name: 'MLOPS_TRAINING_CSV', defaultValue: '', description: 'Optional override. If empty, Jenkins uses MLOPS_TRAINING_CSV from .env.')
     booleanParam(name: 'PROMOTE_MODEL', defaultValue: false, description: 'Promote an MLflow registered model version to an alias.')
@@ -130,7 +130,12 @@ pipeline {
 
               IMAGE_TAG="$PARAM_IMAGE_TAG"
               if [ -z "$IMAGE_TAG" ]; then
-                IMAGE_TAG="build-${BUILD_NUMBER}"
+                GIT_COMMIT_SHORT="$(git rev-parse --short HEAD 2>/dev/null || true)"
+                if [ -n "$GIT_COMMIT_SHORT" ]; then
+                  IMAGE_TAG="build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}"
+                else
+                  IMAGE_TAG="build-${BUILD_NUMBER}"
+                fi
               fi
 
               if [ -z "${GCP_PROJECT_ID:-}" ] || [ -z "${GAR_LOCATION:-}" ]; then

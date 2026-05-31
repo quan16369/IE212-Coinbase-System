@@ -60,7 +60,7 @@ Optional MLOps stages are controlled by Jenkins build parameters:
 
 - `BUILD_ALL_IMAGES=true` builds every Docker Compose image.
 - `BUILD_MLOPS_IMAGE=true` builds the BentoML service image.
-- `PUSH_BENTO_IMAGE=true` pushes the BentoML image to Artifact Registry. Leave `IMAGE_TAG` empty to use `build-${BUILD_NUMBER}`.
+- `PUSH_BENTO_IMAGE=true` pushes the BentoML image to Artifact Registry. Leave `IMAGE_TAG` empty to use `build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}`.
 - `TRAIN_MLOPS_MODEL=true` trains the CPU LightGBM model. Leave `MLOPS_TRAINING_CSV` empty to use the default from `.env`.
 - `PROMOTE_MODEL=true` with `MODEL_VERSION=<version>` and `MODEL_ALIAS=champion` promotes a reviewed MLflow model version.
 - `DEPLOY_BENTO=true` rebuilds and recreates only `bento-price-predictor`.
@@ -93,7 +93,7 @@ DEPLOY_BENTO=true
 Push BentoML image:
 BUILD_MLOPS_IMAGE=true
 PUSH_BENTO_IMAGE=true
-IMAGE_TAG=dev
+IMAGE_TAG=
 TRAIN_MLOPS_MODEL=false
 PROMOTE_MODEL=false
 DEPLOY_BENTO=false
@@ -144,7 +144,7 @@ Then push from local shell:
 
 ```bash
 COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predictor
-IMAGE_TAG=dev make mlops-push-bento
+make mlops-push-bento
 ```
 
 ## Minimal GKE deploy
@@ -231,7 +231,7 @@ Then run the Jenkins job with:
 ```text
 BUILD_MLOPS_IMAGE=true
 PUSH_BENTO_IMAGE=true
-IMAGE_TAG=dev
+IMAGE_TAG=
 DEPLOY_GKE=true
 GCP_CREDENTIALS_ID=gcp-jenkins-sa-key
 GKE_CLUSTER=coinbase-mlops
@@ -257,7 +257,7 @@ make gke-status-bento
 ```text
 BUILD_MLOPS_IMAGE=true
 PUSH_BENTO_IMAGE=true
-IMAGE_TAG=dev
+IMAGE_TAG=
 DEPLOY_GKE=true
 GCP_CREDENTIALS_ID=gcp-jenkins-sa-key
 GKE_CLUSTER=coinbase-mlops

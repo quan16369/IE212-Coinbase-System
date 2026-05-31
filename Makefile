@@ -43,7 +43,7 @@ mlops-build-bento:
 	bash scripts/build_bento.sh
 
 mlops-push-bento:
-	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$${IMAGE_TAG:-dev}}" bash scripts/push_bento_image.sh
+	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; GIT_IMAGE_TAG="$$(git rev-parse --short HEAD 2>/dev/null || echo dev)"; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$${GIT_IMAGE_TAG}}" bash scripts/push_bento_image.sh
 
 mlops-up:
 	COMPOSE_PROFILES=mlops docker compose --env-file .env up -d --build mlflow bento-price-predictor

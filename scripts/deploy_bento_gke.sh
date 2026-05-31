@@ -18,7 +18,8 @@ if [[ -z "$IMAGE_URI" ]]; then
   if [[ -f artifacts/mlops/bento_image_uri.txt ]]; then
     IMAGE_URI="$(cat artifacts/mlops/bento_image_uri.txt)"
   elif [[ -n "${GCP_PROJECT_ID:-}" && -n "${GAR_LOCATION:-}" && -n "${GAR_REPOSITORY:-}" ]]; then
-    IMAGE_URI="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${BENTO_IMAGE_NAME:-coinbase-bento-price-predictor}:${IMAGE_TAG:-dev}"
+    DEFAULT_IMAGE_TAG="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+    IMAGE_URI="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${BENTO_IMAGE_NAME:-coinbase-bento-price-predictor}:${IMAGE_TAG:-$DEFAULT_IMAGE_TAG}"
   fi
 fi
 

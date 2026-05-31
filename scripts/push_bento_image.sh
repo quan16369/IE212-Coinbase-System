@@ -6,12 +6,16 @@ GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
 GAR_LOCATION="${GAR_LOCATION:-}"
 GAR_REPOSITORY="${GAR_REPOSITORY:-}"
 BENTO_IMAGE_NAME="${BENTO_IMAGE_NAME:-coinbase-bento-price-predictor}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
+IMAGE_TAG="${IMAGE_TAG:-}"
+
+if [[ -z "$IMAGE_TAG" ]]; then
+  IMAGE_TAG="$(git rev-parse --short HEAD 2>/dev/null || echo latest)"
+fi
 
 if [[ -z "$GCP_PROJECT_ID" || -z "$GAR_LOCATION" || -z "$GAR_REPOSITORY" ]]; then
   echo "GCP_PROJECT_ID, GAR_LOCATION, and GAR_REPOSITORY are required."
   echo "Example:"
-  echo "  GCP_PROJECT_ID=my-project GAR_LOCATION=asia-southeast1 GAR_REPOSITORY=coinbase-mlops IMAGE_TAG=dev make mlops-push-bento"
+  echo "  GCP_PROJECT_ID=my-project GAR_LOCATION=asia-southeast1 GAR_REPOSITORY=coinbase-mlops make mlops-push-bento"
   exit 1
 fi
 
