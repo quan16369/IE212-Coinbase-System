@@ -1,4 +1,4 @@
-.PHONY: ci deploy up down ps logs migrate backup restore jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-port-forward-bento helm-template-bento
+.PHONY: ci deploy up down ps logs migrate backup restore jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-deploy-bento gke-history-bento gke-rollback-bento gke-status-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
 
 ci:
 	bash scripts/ci_check.sh
@@ -80,6 +80,9 @@ gke-events-bento:
 gke-smoke-bento:
 	curl -fsS http://localhost:$${PORT:-3001}/readyz
 	curl -fsS -X POST http://localhost:$${PORT:-3001}/health
+
+gke-smoke-in-cluster-bento:
+	bash scripts/smoke_bento_gke.sh
 
 gke-port-forward-bento:
 	kubectl -n app port-forward svc/bento-price-predictor $${PORT:-3001}:80

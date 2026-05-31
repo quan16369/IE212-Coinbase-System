@@ -211,6 +211,12 @@ Show recent namespace events when rollout or image pull fails:
 make gke-events-bento
 ```
 
+Run the same smoke test Jenkins uses, without port-forwarding:
+
+```bash
+make gke-smoke-in-cluster-bento
+```
+
 If local port `3001` is busy, use another local port:
 
 ```bash
@@ -290,6 +296,7 @@ GKE_REGION=asia-southeast1
 ```bash
 make gke-status-bento
 make gke-events-bento
+make gke-smoke-in-cluster-bento
 ```
 
 The pod should show `READY 1/1`, `STATUS Running`, and low or zero restarts.

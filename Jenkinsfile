@@ -235,6 +235,7 @@ pipeline {
               gcloud config set project "$GCP_PROJECT_ID"
               gcloud container clusters get-credentials "$GKE_CLUSTER" --region="$GKE_REGION"
               bash scripts/deploy_bento_gke.sh
+              bash scripts/smoke_bento_gke.sh
               kubectl -n app get pods
               kubectl -n app get svc
             '''
