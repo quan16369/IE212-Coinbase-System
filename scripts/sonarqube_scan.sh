@@ -24,7 +24,8 @@ if [[ -z "${SONAR_TOKEN:-}" ]]; then
   exit 0
 fi
 
-sonar-scanner \
+ANALYSIS_TOKEN="$SONAR_TOKEN"
+
+env -u SONAR_TOKEN sonar-scanner \
   -Dsonar.host.url="$SONAR_HOST_URL" \
-  -Dsonar.token="$SONAR_TOKEN" \
-  -Dsonar.login="$SONAR_TOKEN"
+  -Dsonar.login="$ANALYSIS_TOKEN"
