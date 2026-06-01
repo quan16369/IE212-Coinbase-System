@@ -3,6 +3,7 @@ set -euo pipefail
 
 SONAR_REQUIRED="${SONAR_REQUIRED:-false}"
 SONAR_HOST_URL="${SONAR_HOST_URL:-http://localhost:9002}"
+SONAR_HOST_URL="$(printf '%s' "$SONAR_HOST_URL" | xargs)"
 
 if ! command -v sonar-scanner >/dev/null 2>&1; then
   if [[ "$SONAR_REQUIRED" == "true" ]]; then

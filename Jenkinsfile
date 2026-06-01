@@ -69,9 +69,9 @@ pipeline {
               set +a
               ENV_SONAR_HOST_URL="${SONAR_HOST_URL:-}"
 
-              SONAR_HOST_URL="$PARAM_SONARQUBE_URL"
+              SONAR_HOST_URL="$(printf '%s' "$PARAM_SONARQUBE_URL" | xargs)"
               if [ -z "$SONAR_HOST_URL" ]; then
-                SONAR_HOST_URL="$ENV_SONAR_HOST_URL"
+                SONAR_HOST_URL="$(printf '%s' "$ENV_SONAR_HOST_URL" | xargs)"
               fi
 
               if [ -z "$SONAR_HOST_URL" ]; then
