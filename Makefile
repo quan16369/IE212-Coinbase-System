@@ -1,4 +1,4 @@
-.PHONY: ci security-check sonar-up sonar-logs sonar-scan deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate terraform-destroy jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-install-ingress-nginx gke-uninstall-ingress-nginx gke-deploy-bento gke-delete-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-port-forward-bento helm-template-bento
+.PHONY: ci security-check sonar-up sonar-logs sonar-scan deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate terraform-destroy jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict gke-install-ingress-nginx gke-uninstall-ingress-nginx gke-deploy-bento gke-delete-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-smoke-public-bento gke-port-forward-bento gke-install-monitoring gke-uninstall-monitoring gke-monitoring-status gke-monitoring-grafana helm-template-bento
 
 ci:
 	bash scripts/ci_check.sh
@@ -149,8 +149,23 @@ gke-smoke-bento:
 gke-smoke-in-cluster-bento:
 	bash scripts/smoke_bento_gke.sh
 
+gke-smoke-public-bento:
+	bash scripts/smoke_bento_public.sh
+
 gke-port-forward-bento:
 	kubectl -n app port-forward svc/bento-price-predictor $${PORT:-3001}:80
+
+gke-install-monitoring:
+	bash scripts/install_gke_monitoring.sh
+
+gke-uninstall-monitoring:
+	helm -n monitoring uninstall kube-prometheus-stack
+
+gke-monitoring-status:
+	kubectl -n monitoring get pods,svc
+
+gke-monitoring-grafana:
+	kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana $${PORT:-3000}:80
 
 helm-template-bento:
 	helm template bento-price-predictor charts/bento-price-predictor

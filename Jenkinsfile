@@ -22,6 +22,7 @@ pipeline {
     string(name: 'MODEL_ALIAS', defaultValue: 'champion', description: 'MLflow model alias to update.')
     booleanParam(name: 'DEPLOY_BENTO', defaultValue: false, description: 'Restart the BentoML predictor service after build or promotion.')
     booleanParam(name: 'DEPLOY_GKE', defaultValue: false, description: 'Deploy the BentoML predictor to GKE with Helm.')
+    booleanParam(name: 'SMOKE_GKE_PUBLIC', defaultValue: false, description: 'Smoke test the public nginx ingress endpoint after GKE deploy.')
     string(name: 'GCP_CREDENTIALS_ID', defaultValue: 'gcp-jenkins-sa-key', description: 'Jenkins Secret file credential ID for the GCP service account key.')
     string(name: 'GKE_CLUSTER', defaultValue: '', description: 'GKE cluster name. If empty, Jenkins uses GKE_CLUSTER from .env.')
     string(name: 'GKE_REGION', defaultValue: '', description: 'GKE region. If empty, Jenkins uses GKE_REGION from .env.')
@@ -272,6 +273,9 @@ pipeline {
               gcloud container clusters get-credentials "$GKE_CLUSTER" --region="$GKE_REGION"
               bash scripts/deploy_bento_gke.sh
               bash scripts/smoke_bento_gke.sh
+              if [ "$SMOKE_GKE_PUBLIC" = "true" ]; then
+                bash scripts/smoke_bento_public.sh
+              fi
               kubectl -n app get pods
               kubectl -n app get svc
             '''

@@ -8,7 +8,7 @@ locals {
 
   jenkins_roles = toset([
     "roles/artifactregistry.writer",
-    "roles/container.developer",
+    "roles/container.admin",
   ])
 }
 
