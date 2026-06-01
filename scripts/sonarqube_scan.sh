@@ -26,4 +26,5 @@ fi
 
 sonar-scanner \
   -Dsonar.host.url="$SONAR_HOST_URL" \
-  -Dsonar.token="$SONAR_TOKEN"
+  -Dsonar.token="$SONAR_TOKEN" \
+  -Dsonar.login="$SONAR_TOKEN"
