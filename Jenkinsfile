@@ -68,6 +68,7 @@ pipeline {
           withCredentials([string(credentialsId: params.SONARQUBE_TOKEN_CREDENTIALS_ID, variable: 'SONAR_TOKEN')]) {
             sh '''
               PARAM_SONARQUBE_URL="$SONARQUBE_URL"
+              CREDENTIAL_SONAR_TOKEN="$SONAR_TOKEN"
 
               set -a
               . "./$ENV_FILE"
@@ -85,7 +86,7 @@ pipeline {
                 exit 1
               fi
 
-              SONAR_REQUIRED=true SONAR_HOST_URL="$SONAR_HOST_URL" bash scripts/sonarqube_scan.sh
+              SONAR_REQUIRED=true SONAR_HOST_URL="$SONAR_HOST_URL" SONAR_TOKEN="$CREDENTIAL_SONAR_TOKEN" bash scripts/sonarqube_scan.sh
             '''
           }
         }
