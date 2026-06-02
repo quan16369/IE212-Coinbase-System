@@ -19,6 +19,10 @@ pipeline {
     booleanParam(name: 'BUILD_MLOPS_IMAGE', defaultValue: true, description: 'Build the BentoML predictor image.')
     booleanParam(name: 'PUSH_BENTO_IMAGE', defaultValue: false, description: 'Push the BentoML image to GCP Artifact Registry.')
     string(name: 'IMAGE_TAG', defaultValue: '', description: 'Optional image tag. If empty, Jenkins uses build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}.')
+    string(name: 'GCP_PROJECT_ID', defaultValue: 'awesome-pilot-494017-u5', description: 'GCP project ID used for Artifact Registry and GKE deploy.')
+    string(name: 'GAR_LOCATION', defaultValue: 'asia-southeast1', description: 'Artifact Registry location.')
+    string(name: 'GAR_REPOSITORY', defaultValue: 'coinbase-mlops', description: 'Artifact Registry Docker repository.')
+    string(name: 'BENTO_IMAGE_NAME', defaultValue: 'coinbase-bento-price-predictor', description: 'Artifact Registry image name for the BentoML predictor.')
     booleanParam(name: 'TRAIN_MLOPS_MODEL', defaultValue: false, description: 'Train the CPU ML model during this build.')
     string(name: 'MLOPS_TRAINING_CSV', defaultValue: '', description: 'Optional override. If empty, Jenkins uses MLOPS_TRAINING_CSV from .env.')
     booleanParam(name: 'PROMOTE_MODEL', defaultValue: false, description: 'Promote an MLflow registered model version to an alias.')
@@ -165,10 +169,19 @@ pipeline {
           withCredentials([file(credentialsId: params.GCP_CREDENTIALS_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
             sh '''
               PARAM_IMAGE_TAG="$IMAGE_TAG"
+              PARAM_GCP_PROJECT_ID="$GCP_PROJECT_ID"
+              PARAM_GAR_LOCATION="$GAR_LOCATION"
+              PARAM_GAR_REPOSITORY="$GAR_REPOSITORY"
+              PARAM_BENTO_IMAGE_NAME="$BENTO_IMAGE_NAME"
 
               set -a
               . "./$ENV_FILE"
               set +a
+
+              ENV_GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
+              ENV_GAR_LOCATION="${GAR_LOCATION:-}"
+              ENV_GAR_REPOSITORY="${GAR_REPOSITORY:-}"
+              ENV_BENTO_IMAGE_NAME="${BENTO_IMAGE_NAME:-}"
 
               IMAGE_TAG="$PARAM_IMAGE_TAG"
               if [ -z "$IMAGE_TAG" ]; then
@@ -180,8 +193,28 @@ pipeline {
                 fi
               fi
 
-              if [ -z "${GCP_PROJECT_ID:-}" ] || [ -z "${GAR_LOCATION:-}" ]; then
-                echo "GCP_PROJECT_ID and GAR_LOCATION are required for PUSH_BENTO_IMAGE=true."
+              GCP_PROJECT_ID="$PARAM_GCP_PROJECT_ID"
+              if [ -z "$GCP_PROJECT_ID" ]; then
+                GCP_PROJECT_ID="$ENV_GCP_PROJECT_ID"
+              fi
+
+              GAR_LOCATION="$PARAM_GAR_LOCATION"
+              if [ -z "$GAR_LOCATION" ]; then
+                GAR_LOCATION="$ENV_GAR_LOCATION"
+              fi
+
+              GAR_REPOSITORY="$PARAM_GAR_REPOSITORY"
+              if [ -z "$GAR_REPOSITORY" ]; then
+                GAR_REPOSITORY="$ENV_GAR_REPOSITORY"
+              fi
+
+              BENTO_IMAGE_NAME="$PARAM_BENTO_IMAGE_NAME"
+              if [ -z "$BENTO_IMAGE_NAME" ]; then
+                BENTO_IMAGE_NAME="$ENV_BENTO_IMAGE_NAME"
+              fi
+
+              if [ -z "${GCP_PROJECT_ID:-}" ] || [ -z "${GAR_LOCATION:-}" ] || [ -z "${GAR_REPOSITORY:-}" ]; then
+                echo "GCP_PROJECT_ID, GAR_LOCATION, and GAR_REPOSITORY are required for PUSH_BENTO_IMAGE=true."
                 exit 1
               fi
 
@@ -249,6 +282,9 @@ pipeline {
             sh '''
               PARAM_GKE_CLUSTER="$GKE_CLUSTER"
               PARAM_GKE_REGION="$GKE_REGION"
+              PARAM_GCP_PROJECT_ID="$GCP_PROJECT_ID"
+              PARAM_GAR_LOCATION="$GAR_LOCATION"
+              PARAM_GAR_REPOSITORY="$GAR_REPOSITORY"
 
               set -a
               . "./$ENV_FILE"
@@ -256,6 +292,9 @@ pipeline {
 
               ENV_GKE_CLUSTER="${GKE_CLUSTER:-}"
               ENV_GKE_REGION="${GKE_REGION:-}"
+              ENV_GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
+              ENV_GAR_LOCATION="${GAR_LOCATION:-}"
+              ENV_GAR_REPOSITORY="${GAR_REPOSITORY:-}"
 
               GKE_CLUSTER="$PARAM_GKE_CLUSTER"
               if [ -z "$GKE_CLUSTER" ]; then
@@ -265,6 +304,21 @@ pipeline {
               GKE_REGION="$PARAM_GKE_REGION"
               if [ -z "$GKE_REGION" ]; then
                 GKE_REGION="$ENV_GKE_REGION"
+              fi
+
+              GCP_PROJECT_ID="$PARAM_GCP_PROJECT_ID"
+              if [ -z "$GCP_PROJECT_ID" ]; then
+                GCP_PROJECT_ID="$ENV_GCP_PROJECT_ID"
+              fi
+
+              GAR_LOCATION="$PARAM_GAR_LOCATION"
+              if [ -z "$GAR_LOCATION" ]; then
+                GAR_LOCATION="$ENV_GAR_LOCATION"
+              fi
+
+              GAR_REPOSITORY="$PARAM_GAR_REPOSITORY"
+              if [ -z "$GAR_REPOSITORY" ]; then
+                GAR_REPOSITORY="$ENV_GAR_REPOSITORY"
               fi
 
               if [ -z "${GCP_PROJECT_ID:-}" ] || [ -z "$GKE_CLUSTER" ] || [ -z "$GKE_REGION" ]; then
