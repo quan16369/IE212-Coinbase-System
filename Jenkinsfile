@@ -7,6 +7,10 @@ pipeline {
     buildDiscarder(logRotator(numToKeepStr: '20'))
   }
 
+  triggers {
+    githubPush()
+  }
+
   parameters {
     booleanParam(name: 'BUILD_ALL_IMAGES', defaultValue: false, description: 'Build every Docker Compose image.')
     booleanParam(name: 'RUN_SONARQUBE_SCAN', defaultValue: false, description: 'Run SonarQube code quality scan.')

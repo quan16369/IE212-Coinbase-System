@@ -44,6 +44,39 @@ The repo now uses `Jenkinsfile` for CI/CD. A basic Jenkins host needs:
 - Permission for the Jenkins user to run Docker.
 - A `.env` file on the Jenkins workspace or deployment host. If missing, the pipeline copies `.env.example` for CI/dev.
 
+### GitHub webhook trigger
+
+Jenkins can run automatically when GitHub receives a push.
+
+In Jenkins:
+
+1. Install or enable the GitHub plugin if it is not already available.
+2. Configure the CI job to use this repository as the SCM source.
+3. Keep the `Jenkinsfile` from this repository as the pipeline definition.
+
+In GitHub, open the repository settings and add a webhook:
+
+```text
+Payload URL: http://<jenkins-host>:8088/github-webhook/
+Content type: application/json
+Events: Just the push event
+Active: checked
+```
+
+For a local Jenkins running behind WSL or Docker, GitHub must be able to reach the webhook URL. Use a public tunnel such as ngrok or Cloudflare Tunnel for demos:
+
+```bash
+ngrok http 8088
+```
+
+Then use the generated HTTPS URL:
+
+```text
+https://<ngrok-id>.ngrok-free.app/github-webhook/
+```
+
+The pipeline declares `githubPush()`, so GitHub push events trigger Jenkins without manually pressing `Build`.
+
 Pipeline stages:
 
 - `Prepare`: creates `.env` from `.env.example` if needed.
@@ -306,6 +339,19 @@ Follow BentoML logs live:
 make gke-follow-logs-bento
 ```
 
+Read centralized GKE logs from Google Cloud Logging:
+
+```bash
+make gke-cloud-logs-bento
+```
+
+Useful filters:
+
+```bash
+LIMIT=50 FRESHNESS=24h make gke-cloud-logs-bento
+GKE_CLUSTER=coinbase-mlops GKE_REGION=asia-southeast1 make gke-cloud-logs-bento
+```
+
 Show recent namespace events when rollout or image pull fails:
 
 ```bash
@@ -398,6 +444,42 @@ terraform plan
 ```
 
 `terraform destroy` removes the GKE cluster, Artifact Registry repository, and Jenkins deployer service account managed by Terraform. Do not run it if you still need the pushed Docker images or the live demo endpoint.
+
+### GKE monitoring and logging
+
+Install the lightweight Prometheus/Grafana stack:
+
+```bash
+make gke-install-monitoring
+```
+
+Open Grafana locally:
+
+```bash
+PORT=3003 make gke-monitoring-grafana
+```
+
+Then browse `http://localhost:3003` and log in with `admin/admin`.
+
+Check that Prometheus has targets:
+
+```promql
+up
+```
+
+For GKE Autopilot logging, use Google Cloud Logging instead of installing a log collector DaemonSet:
+
+```bash
+make gke-cloud-logs-bento
+```
+
+This avoids hostPath/privileged pod issues on Autopilot while still giving centralized logs for the BentoML workload.
+
+Remove the monitoring stack when the demo is done:
+
+```bash
+make gke-uninstall-monitoring
+```
 
 ### Minimal GKE rollback
 
