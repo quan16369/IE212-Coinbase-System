@@ -301,8 +301,14 @@ services:
       - "${JENKINS_AGENT_PORT:-50000}:50000"
     environment:
       - JAVA_OPTS=${JENKINS_JAVA_OPTS:--Djenkins.install.runSetupWizard=true}
+      - CASC_JENKINS_CONFIG=${CASC_JENKINS_CONFIG:-}
+      - JENKINS_PUBLIC_URL=${JENKINS_PUBLIC_URL:-http://localhost:8088/}
+      - JENKINS_GITHUB_REPOSITORY_URL=${JENKINS_GITHUB_REPOSITORY_URL:-https://github.com/quan16369/Coinbase_Streaming.git}
+      - JENKINS_GITHUB_CREDENTIALS_ID=${JENKINS_GITHUB_CREDENTIALS_ID:-}
     volumes:
       - jenkins-data:/var/jenkins_home
+      - ./ops/jenkins/casc:/opt/jenkins/casc:ro
+      - ./ops/jenkins/jobs:/opt/jenkins/jobs:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - ./:/workspace/Coinbase_Streaming
     networks:

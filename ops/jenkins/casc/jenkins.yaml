@@ -1,0 +1,12 @@
+jenkins:
+  systemMessage: "Coinbase Streaming CI/CD"
+  numExecutors: 2
+  mode: NORMAL
+  scmCheckoutRetryCount: 2
+
+unclassified:
+  location:
+    url: "${JENKINS_PUBLIC_URL:-http://localhost:8088/}"
+
+jobs:
+  - file: /opt/jenkins/jobs/coinbase-streaming-multibranch.groovy

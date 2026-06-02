@@ -143,6 +143,37 @@ Ignore branches that are also filed as PRs
 
 With this setup, Jenkins discovers branches and pull requests automatically and uses the `Jenkinsfile` from each branch.
 
+The local Jenkins image also includes the required plugins for this pattern:
+
+```text
+configuration-as-code
+github
+github-branch-source
+git
+job-dsl
+workflow-aggregator
+```
+
+For a fresh local controller, you can bootstrap a simple multibranch job with Jenkins Configuration as Code:
+
+```bash
+CASC_JENKINS_CONFIG=/opt/jenkins/casc/jenkins.yaml \
+JENKINS_PUBLIC_URL=https://jenkins.example.com/ \
+JENKINS_GITHUB_REPOSITORY_URL=https://github.com/quan16369/Coinbase_Streaming.git \
+COMPOSE_PROFILES=ci docker compose --env-file .env up -d --build jenkins
+```
+
+If the GitHub repository is private, set `JENKINS_GITHUB_CREDENTIALS_ID` to a Jenkins credential ID that can read the repository. For a production GitHub App setup, create that credential in Jenkins first, then rescan the multibranch job.
+
+The JCasC files live under:
+
+```text
+ops/jenkins/casc/jenkins.yaml
+ops/jenkins/jobs/coinbase-streaming-multibranch.groovy
+```
+
+They are intentionally minimal. Credentials and secrets stay outside Git.
+
 #### Local demo fallback
 
 In Jenkins:

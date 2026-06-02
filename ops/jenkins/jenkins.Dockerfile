@@ -5,6 +5,8 @@ USER root
 ARG HELM_VERSION=3.19.4
 ARG SONAR_SCANNER_VERSION=7.3.0.5189
 
+COPY ops/jenkins/plugins.txt /usr/share/jenkins/ref/plugins.txt
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release libgomp1 python3 python3-pip python3-venv unzip \
     && install -m 0755 -d /etc/apt/keyrings \
@@ -28,5 +30,7 @@ RUN apt-get update \
     && rm -rf /tmp/helm.tar.gz /tmp/linux-amd64 /tmp/sonar-scanner.zip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
 
 USER root
