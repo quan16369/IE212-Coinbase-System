@@ -686,83 +686,267 @@ GKE_REGION=asia-southeast1
 
 For local demo work, the service account can have Artifact Registry writer access and enough GKE permissions to deploy. For production, prefer keyless Workload Identity or a locked-down deploy agent.
 
-### GKE demo runbook
+### Production-style Jenkins to GKE runbook
 
-Use this runbook when you want to demonstrate the Jenkins-to-GKE flow end to end.
-
-1. Confirm the current GCP project and cluster access:
-
-```bash
-gcloud config get-value project
-gcloud container clusters get-credentials coinbase-mlops --region=asia-southeast1
-make gke-status-bento
-```
-
-2. Run the Jenkins job with these parameters:
+Use this runbook for the current end-to-end multibranch flow:
 
 ```text
+GitHub branch
+-> Jenkins multibranch pipeline
+-> CI checks
+-> Checkov IaC/security checks
+-> SonarQube scan
+-> BentoML image build
+-> Artifact Registry push
+-> Helm deploy to GKE
+-> in-cluster smoke test
+-> nginx ingress public smoke test
+```
+
+#### 1. Start local CI services
+
+Start Jenkins and SonarQube:
+
+```bash
+COMPOSE_PROFILES=ci docker compose --env-file .env up -d jenkins sonarqube
+```
+
+Open:
+
+```text
+Jenkins: http://localhost:8088
+SonarQube from host: http://localhost:9002
+SonarQube from Jenkins: http://sonarqube:9000
+```
+
+#### 2. Prepare GCP and GKE
+
+Create or update the Terraform-managed infrastructure:
+
+```bash
+cd /home/quan/projects/Coinbase_Streaming
+make terraform-init
+make terraform-plan
+terraform -chdir=infra/terraform apply
+```
+
+Connect local `kubectl` to the cluster:
+
+```bash
+gcloud config set account <your-user-account>
+gcloud config set project awesome-pilot-494017-u5
+gcloud container clusters get-credentials coinbase-mlops --region=asia-southeast1
+kubectl get ns
+```
+
+If local `kubectl` fails with a service-account token error, switch back to your user account:
+
+```bash
+gcloud auth list
+gcloud config set account <your-user-account>
+gcloud container clusters get-credentials coinbase-mlops --region=asia-southeast1
+```
+
+The Jenkins service account is for Jenkins credentials. Local terminal operations should normally use your user account.
+
+#### 3. Install nginx ingress
+
+Install the shared public ingress controller once per cluster:
+
+```bash
+make gke-install-ingress-nginx
+```
+
+Check its public IP:
+
+```bash
+make gke-ingress-url-bento
+```
+
+#### 4. Jenkins credentials
+
+Create these Jenkins credentials before the full pipeline:
+
+```text
+ID: sonarqube-token
+Kind: Secret text
+Value: SonarQube Project Analysis Token or User Token
+```
+
+```text
+ID: gcp-jenkins-sa-key
+Kind: Secret file
+File: Jenkins deployer service account JSON key
+```
+
+For the local demo key path from Terraform:
+
+```bash
+cd /home/quan/projects/Coinbase_Streaming/infra/terraform
+terraform output -raw jenkins_service_account_key_json_base64 | base64 -d > /tmp/gcp-jenkins-sa-key.json
+```
+
+Upload `/tmp/gcp-jenkins-sa-key.json` to Jenkins as the `gcp-jenkins-sa-key` Secret file. Do not commit this file.
+
+#### 5. Run the branch pipeline
+
+In Jenkins:
+
+```text
+Coinbase Streaming
+-> Scan Multibranch Pipeline Now
+-> add/ops
+-> Build with Parameters
+```
+
+Use these parameters for the full demo:
+
+```text
+RUN_SONARQUBE_SCAN=true
+SONARQUBE_URL=http://sonarqube:9000
+SONARQUBE_TOKEN_CREDENTIALS_ID=sonarqube-token
+
 BUILD_MLOPS_IMAGE=true
 PUSH_BENTO_IMAGE=true
 IMAGE_TAG=
-DEPLOY_GKE=true
+IMAGE_URI=
+
+GCP_PROJECT_ID=awesome-pilot-494017-u5
+GAR_LOCATION=asia-southeast1
+GAR_REPOSITORY=coinbase-mlops
+BENTO_IMAGE_NAME=coinbase-bento-price-predictor
 GCP_CREDENTIALS_ID=gcp-jenkins-sa-key
+
+DEPLOY_GKE=true
 GKE_CLUSTER=coinbase-mlops
 GKE_REGION=asia-southeast1
+ENABLE_BENTO_INGRESS=true
+SMOKE_GKE_PUBLIC=true
+BENTO_PUBLIC_URL=
+
+BUILD_ALL_IMAGES=false
+TRAIN_MLOPS_MODEL=false
+PROMOTE_MODEL=false
+DEPLOY_BENTO=false
+DEPLOY_COMPOSE=false
 ```
 
-3. Verify the GKE rollout:
+Leave `IMAGE_TAG` empty so Jenkins uses an immutable tag like:
+
+```text
+build-10-cda70c4
+```
+
+Leave `IMAGE_URI` empty when `PUSH_BENTO_IMAGE=true`. Set `IMAGE_URI` only when you intentionally want to deploy an existing image without pushing a new one.
+
+#### 6. Expected success output
+
+The end of a successful run should include:
+
+```text
+Pushed BentoML image: asia-southeast1-docker.pkg.dev/.../coinbase-bento-price-predictor:<tag>
+deployment "bento-price-predictor" successfully rolled out
+GKE Bento smoke test passed
+Public Bento smoke test passed at http://<nginx-ip>
+Finished: SUCCESS
+```
+
+Recent successful demo image:
+
+```text
+asia-southeast1-docker.pkg.dev/awesome-pilot-494017-u5/coinbase-mlops/coinbase-bento-price-predictor:build-10-cda70c4
+```
+
+Recent successful public URL:
+
+```text
+http://35.240.132.151
+```
+
+Public IPs can change when the load balancer is recreated.
+
+#### 7. Verify after Jenkins
+
+Check the GKE workload:
 
 ```bash
 make gke-status-bento
-make gke-events-bento
 make gke-smoke-in-cluster-bento
+make gke-smoke-public-bento
 ```
 
-The pod should show `READY 1/1`, `STATUS Running`, and low or zero restarts.
-
-4. Port-forward the internal ClusterIP service:
+Check the public endpoint directly:
 
 ```bash
-PORT=3010 make gke-port-forward-bento
+BENTO_URL="$(make -s gke-ingress-url-bento)"
+curl -fsS "$BENTO_URL/readyz"
+curl -fsS -X POST "$BENTO_URL/health"
 ```
 
-Keep that terminal open. In another terminal, run:
+Run a prediction through the public endpoint:
 
 ```bash
-PORT=3010 make gke-smoke-bento
-```
-
-5. Test prediction through the GKE pod:
-
-```bash
-MLOPS_PREDICT_URL=http://localhost:3010/predict \
+MLOPS_PREDICT_URL="$BENTO_URL/predict" \
 DATA=/home/quan/projects/Coinbase_Streaming/data/BTCUSDT_5m_full.csv \
 make mlops-test-predict
 ```
 
-6. Check logs after the request:
+#### 8. Common failures
 
-```bash
-make gke-logs-bento
-```
+If SonarQube fails with `SONAR_TOKEN is required`, confirm Jenkins has the `sonarqube-token` Secret text credential and `SONARQUBE_TOKEN_CREDENTIALS_ID=sonarqube-token`.
 
-Look for a line like:
+If Artifact Registry push fails against `change-me-gcp-project`, set the Jenkins `GCP_PROJECT_ID` parameter to:
 
 ```text
-method=POST,path=/predict ... status=200
+awesome-pilot-494017-u5
 ```
 
-7. When you no longer need the demo cluster, delete it to stop GKE charges:
+If GKE deploy fails with `ImagePullBackOff`, check that `PUSH_BENTO_IMAGE=true` or set `IMAGE_URI` to an existing Artifact Registry image. Do not deploy from stale `artifacts/mlops/bento_image_uri.txt`.
+
+If public smoke test cannot determine a URL, install nginx ingress and enable the Bento ingress:
 
 ```bash
-gcloud container clusters delete coinbase-mlops --region=asia-southeast1
+make gke-install-ingress-nginx
 ```
 
-If you also want to remove pushed images and repository storage, delete the Artifact Registry repository:
+Then rerun Jenkins with:
+
+```text
+ENABLE_BENTO_INGRESS=true
+SMOKE_GKE_PUBLIC=true
+```
+
+If rollout waits on old replicas, inspect the deployment:
 
 ```bash
-gcloud artifacts repositories delete coinbase-mlops --location=asia-southeast1
+make gke-status-bento
+make gke-describe-bento
+make gke-events-bento
 ```
+
+#### 9. Cleanup after demo
+
+To stop public load balancer and workload costs:
+
+```bash
+make gke-uninstall-monitoring
+make gke-uninstall-ingress-nginx
+make gke-delete-bento
+```
+
+To stop GKE cluster charges entirely and remove Terraform-managed resources:
+
+```bash
+make terraform-destroy
+```
+
+Confirm before destroy:
+
+```bash
+terraform -chdir=infra/terraform plan
+```
+
+`terraform destroy` removes Terraform-managed GKE, Artifact Registry, and Jenkins deployer service account resources. Run it only when you no longer need the live endpoint or pushed images.
 
 ### Local Jenkins with Compose
 
@@ -790,7 +974,7 @@ This socket mount is for local practice only. In production, prefer a dedicated 
 
 If Docker in WSL fails with `docker-credential-desktop.exe`, remove the broken Docker Desktop credential helper from `~/.docker/config.json` or run Docker with a clean `DOCKER_CONFIG`.
 
-To run the repository `Jenkinsfile` from the local mounted workspace, configure a Pipeline job with this script:
+For the older single Pipeline fallback only, you can run the repository `Jenkinsfile` from the local mounted workspace with this script:
 
 ```groovy
 node {
@@ -800,7 +984,9 @@ node {
 }
 ```
 
-Do not wrap that `load` call inside another `pipeline { ... }` block. Jenkins allows only one Declarative Pipeline block per run. The repository `Jenkinsfile` runs its shell steps from `/workspace/Coinbase_Streaming` for local Jenkins.
+Do not wrap that `load` call inside another `pipeline { ... }` block. Jenkins allows only one Declarative Pipeline block per run.
+
+The production-style path is the multibranch job, which checks out each branch into Jenkins' own workspace and runs that branch's `Jenkinsfile` there.
 
 ## Monitoring and logs
 
