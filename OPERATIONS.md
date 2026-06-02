@@ -48,6 +48,103 @@ The repo now uses `Jenkinsfile` for CI/CD. A basic Jenkins host needs:
 
 Jenkins can run automatically when GitHub receives a push.
 
+For production-like usage, prefer a Jenkins Multibranch Pipeline connected to GitHub with a GitHub App. A regular single Pipeline job is acceptable for local demos, but Multibranch is closer to how teams handle branches and pull requests.
+
+Production shape:
+
+```text
+GitHub push or pull request
+-> GitHub App webhook
+-> Jenkins Multibranch Pipeline
+-> Jenkinsfile in this repo
+-> CI, security checks, image push, GKE deploy
+```
+
+Jenkins should be reachable on a real HTTPS URL:
+
+```text
+https://jenkins.example.com
+```
+
+The GitHub webhook endpoint is:
+
+```text
+https://jenkins.example.com/github-webhook/
+```
+
+Do not use `localhost` for production webhooks. GitHub must be able to reach Jenkins from the public internet or through an approved private connectivity pattern.
+
+#### Production: Multibranch Pipeline with GitHub App
+
+In GitHub, create a GitHub App for Jenkins:
+
+```text
+GitHub -> Settings -> Developer settings -> GitHub Apps -> New GitHub App
+```
+
+Recommended permissions:
+
+```text
+Repository metadata: Read
+Repository contents: Read
+Pull requests: Read
+Checks: Read and write
+Commit statuses: Read and write
+Webhooks: Read and write
+```
+
+Subscribe to these events:
+
+```text
+Push
+Pull request
+Check suite
+```
+
+Set the webhook URL:
+
+```text
+https://jenkins.example.com/github-webhook/
+```
+
+Install the GitHub App on the repository or organization, then create Jenkins credentials for the GitHub App:
+
+```text
+Manage Jenkins
+-> Credentials
+-> System
+-> Global credentials
+-> Add Credentials
+Kind: GitHub App
+App ID: <github-app-id>
+Private Key: <github-app-private-key.pem>
+ID: github-app-coinbase-streaming
+```
+
+Create the Jenkins job:
+
+```text
+New Item
+-> Multibranch Pipeline
+-> Branch Sources: GitHub
+-> Credentials: github-app-coinbase-streaming
+-> Repository HTTPS URL: https://github.com/quan16369/Coinbase_Streaming.git
+-> Build Configuration: by Jenkinsfile
+-> Script Path: Jenkinsfile
+```
+
+Recommended scan behavior:
+
+```text
+Discover branches
+Discover pull requests from origin
+Ignore branches that are also filed as PRs
+```
+
+With this setup, Jenkins discovers branches and pull requests automatically and uses the `Jenkinsfile` from each branch.
+
+#### Local demo fallback
+
 In Jenkins:
 
 1. Install or enable the GitHub plugin if it is not already available.
@@ -63,7 +160,7 @@ Events: Just the push event
 Active: checked
 ```
 
-For a local Jenkins running behind WSL or Docker, GitHub must be able to reach the webhook URL. Use a public tunnel such as ngrok or Cloudflare Tunnel for demos:
+For a local Jenkins running behind WSL or Docker, GitHub must be able to reach the webhook URL. Use a public tunnel such as ngrok or Cloudflare Tunnel only for demos:
 
 ```bash
 ngrok http 8088
@@ -76,6 +173,40 @@ https://<ngrok-id>.ngrok-free.app/github-webhook/
 ```
 
 The pipeline declares `githubPush()`, so GitHub push events trigger Jenkins without manually pressing `Build`.
+
+#### CI/CD credentials
+
+Production Jenkins should avoid long-lived JSON keys when possible. Prefer one of these:
+
+```text
+Jenkins on GKE + Workload Identity
+Jenkins on GCE VM + attached service account
+Short-lived federated credentials
+```
+
+For this local demo, Jenkins still supports a Secret file credential:
+
+```text
+gcp-jenkins-sa-key
+```
+
+Rotate or recreate that key whenever Terraform destroys and recreates the deployer service account.
+
+#### Production checklist
+
+Before treating this CI/CD flow as production, confirm:
+
+```text
+Jenkins has a stable HTTPS URL.
+GitHub App is used instead of a personal token where possible.
+Webhook delivery succeeds from GitHub.
+Jenkins credentials are not stored in Git.
+GCP deploy identity has only the required Artifact Registry and GKE permissions.
+Branch protection requires Jenkins CI and security checks.
+main deploys only after review or an explicit approved promotion.
+GKE deploy uses immutable image tags, not latest.
+Monitoring and logs are available before public exposure.
+```
 
 Pipeline stages:
 
