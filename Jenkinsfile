@@ -30,7 +30,9 @@ pipeline {
     string(name: 'MODEL_ALIAS', defaultValue: 'champion', description: 'MLflow model alias to update.')
     booleanParam(name: 'DEPLOY_BENTO', defaultValue: false, description: 'Restart the BentoML predictor service after build or promotion.')
     booleanParam(name: 'DEPLOY_GKE', defaultValue: false, description: 'Deploy the BentoML predictor to GKE with Helm.')
+    booleanParam(name: 'ENABLE_BENTO_INGRESS', defaultValue: false, description: 'Expose the BentoML predictor through the nginx ingress controller.')
     booleanParam(name: 'SMOKE_GKE_PUBLIC', defaultValue: false, description: 'Smoke test the public nginx ingress endpoint after GKE deploy.')
+    string(name: 'BENTO_PUBLIC_URL', defaultValue: '', description: 'Optional public Bento URL for smoke tests. If empty, Jenkins uses the nginx LoadBalancer address.')
     string(name: 'GCP_CREDENTIALS_ID', defaultValue: 'gcp-jenkins-sa-key', description: 'Jenkins Secret file credential ID for the GCP service account key.')
     string(name: 'GKE_CLUSTER', defaultValue: '', description: 'GKE cluster name. If empty, Jenkins uses GKE_CLUSTER from .env.')
     string(name: 'GKE_REGION', defaultValue: '', description: 'GKE region. If empty, Jenkins uses GKE_REGION from .env.')
@@ -285,6 +287,8 @@ pipeline {
               PARAM_GCP_PROJECT_ID="$GCP_PROJECT_ID"
               PARAM_GAR_LOCATION="$GAR_LOCATION"
               PARAM_GAR_REPOSITORY="$GAR_REPOSITORY"
+              PARAM_ENABLE_BENTO_INGRESS="$ENABLE_BENTO_INGRESS"
+              PARAM_BENTO_PUBLIC_URL="$BENTO_PUBLIC_URL"
 
               set -a
               . "./$ENV_FILE"
@@ -325,6 +329,15 @@ pipeline {
                 echo "GCP_PROJECT_ID, GKE_CLUSTER, and GKE_REGION are required for DEPLOY_GKE=true."
                 echo "Set them in .env or pass the Jenkins parameters."
                 exit 1
+              fi
+
+              if [ "$PARAM_ENABLE_BENTO_INGRESS" = "true" ]; then
+                export BENTO_INGRESS_ENABLED=true
+                export BENTO_INGRESS_CLASS="${BENTO_INGRESS_CLASS:-nginx}"
+              fi
+
+              if [ -n "$PARAM_BENTO_PUBLIC_URL" ]; then
+                export BENTO_PUBLIC_URL="$PARAM_BENTO_PUBLIC_URL"
               fi
 
               gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
