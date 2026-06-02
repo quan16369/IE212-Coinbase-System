@@ -6,19 +6,11 @@ multibranchPipelineJob('coinbase-streaming') {
   description('Production-style multibranch pipeline for Coinbase Streaming.')
 
   branchSources {
-    branchSource {
-      source {
-        git {
-          id('coinbase-streaming-git')
-          remote(repoUrl)
-          if (credentialId) {
-            credentialsId(credentialId)
-          }
-          traits {
-            branchDiscoveryTrait()
-            pruneStaleBranchTrait()
-          }
-        }
+    git {
+      id('coinbase-streaming-git')
+      remote(repoUrl)
+      if (credentialId) {
+        credentialsId(credentialId)
       }
     }
   }

@@ -41,7 +41,7 @@ pipeline {
   stages {
     stage('Prepare') {
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           sh '''
             if [ ! -f "$ENV_FILE" ]; then
               cp .env.example "$ENV_FILE"
@@ -53,7 +53,7 @@ pipeline {
 
     stage('CI Checks') {
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           sh 'bash scripts/ci_check.sh'
         }
       }
@@ -64,7 +64,7 @@ pipeline {
         expression { return params.RUN_SONARQUBE_SCAN }
       }
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           withCredentials([string(credentialsId: params.SONARQUBE_TOKEN_CREDENTIALS_ID, variable: 'SONAR_TOKEN')]) {
             sh '''
               PARAM_SONARQUBE_URL="$SONARQUBE_URL"
@@ -97,7 +97,7 @@ pipeline {
         expression { return params.BUILD_ALL_IMAGES }
       }
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           sh 'docker compose --env-file "$ENV_FILE" build'
         }
       }
@@ -108,7 +108,7 @@ pipeline {
         expression { return params.TRAIN_MLOPS_MODEL }
       }
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           sh '''
             PARAM_TRAINING_CSV="$MLOPS_TRAINING_CSV"
 
@@ -149,7 +149,7 @@ pipeline {
         expression { return params.BUILD_MLOPS_IMAGE }
       }
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           sh 'COMPOSE_PROFILES=mlops docker compose --env-file "$ENV_FILE" build bento-price-predictor'
         }
       }
@@ -160,7 +160,7 @@ pipeline {
         expression { return params.PUSH_BENTO_IMAGE }
       }
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           withCredentials([file(credentialsId: params.GCP_CREDENTIALS_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
             sh '''
               PARAM_IMAGE_TAG="$IMAGE_TAG"
@@ -201,7 +201,7 @@ pipeline {
         expression { return params.PROMOTE_MODEL }
       }
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           sh '''
             if [ -z "$MODEL_VERSION" ]; then
               echo "MODEL_VERSION is required when PROMOTE_MODEL=true."
@@ -229,7 +229,7 @@ pipeline {
         expression { return params.DEPLOY_BENTO }
       }
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           sh '''
             COMPOSE_PROFILES=mlops docker compose --env-file "$ENV_FILE" up -d --build bento-price-predictor
             docker compose --env-file "$ENV_FILE" ps bento-price-predictor
@@ -243,7 +243,7 @@ pipeline {
         expression { return params.DEPLOY_GKE }
       }
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           withCredentials([file(credentialsId: params.GCP_CREDENTIALS_ID, variable: 'GOOGLE_APPLICATION_CREDENTIALS')]) {
             sh '''
               PARAM_GKE_CLUSTER="$GKE_CLUSTER"
@@ -293,7 +293,7 @@ pipeline {
         expression { return params.DEPLOY_COMPOSE && (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master' || env.BRANCH_NAME == null) }
       }
       steps {
-        dir('/workspace/Coinbase_Streaming') {
+        dir("${env.WORKSPACE}") {
           sh 'bash scripts/deploy_compose.sh'
         }
       }
@@ -302,7 +302,7 @@ pipeline {
 
   post {
     always {
-      dir('/workspace/Coinbase_Streaming') {
+      dir("${env.WORKSPACE}") {
         sh 'docker compose --env-file "$ENV_FILE" ps || true'
       }
     }
