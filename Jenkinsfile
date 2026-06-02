@@ -23,6 +23,7 @@ pipeline {
     string(name: 'GAR_LOCATION', defaultValue: 'asia-southeast1', description: 'Artifact Registry location.')
     string(name: 'GAR_REPOSITORY', defaultValue: 'coinbase-mlops', description: 'Artifact Registry Docker repository.')
     string(name: 'BENTO_IMAGE_NAME', defaultValue: 'coinbase-bento-price-predictor', description: 'Artifact Registry image name for the BentoML predictor.')
+    string(name: 'IMAGE_URI', defaultValue: '', description: 'Optional full Bento image URI for GKE deploy. If empty, deploy uses the image pushed by this build.')
     booleanParam(name: 'TRAIN_MLOPS_MODEL', defaultValue: false, description: 'Train the CPU ML model during this build.')
     string(name: 'MLOPS_TRAINING_CSV', defaultValue: '', description: 'Optional override. If empty, Jenkins uses MLOPS_TRAINING_CSV from .env.')
     booleanParam(name: 'PROMOTE_MODEL', defaultValue: false, description: 'Promote an MLflow registered model version to an alias.')
@@ -289,6 +290,7 @@ pipeline {
               PARAM_GAR_REPOSITORY="$GAR_REPOSITORY"
               PARAM_ENABLE_BENTO_INGRESS="$ENABLE_BENTO_INGRESS"
               PARAM_BENTO_PUBLIC_URL="$BENTO_PUBLIC_URL"
+              PARAM_IMAGE_URI="$IMAGE_URI"
 
               set -a
               . "./$ENV_FILE"
@@ -328,6 +330,14 @@ pipeline {
               if [ -z "${GCP_PROJECT_ID:-}" ] || [ -z "$GKE_CLUSTER" ] || [ -z "$GKE_REGION" ]; then
                 echo "GCP_PROJECT_ID, GKE_CLUSTER, and GKE_REGION are required for DEPLOY_GKE=true."
                 echo "Set them in .env or pass the Jenkins parameters."
+                exit 1
+              fi
+
+              if [ -n "$PARAM_IMAGE_URI" ]; then
+                export IMAGE_URI="$PARAM_IMAGE_URI"
+              elif [ "$PUSH_BENTO_IMAGE" != "true" ]; then
+                echo "DEPLOY_GKE requires PUSH_BENTO_IMAGE=true or an explicit IMAGE_URI."
+                echo "This prevents deploying a stale image tag from artifacts/mlops/bento_image_uri.txt."
                 exit 1
               fi
 
