@@ -246,6 +246,7 @@ Pipeline stages:
 - `Build Images`: builds all Docker images.
 - `Train CPU ML Model`: trains the LightGBM model, logs to MLflow, and archives model artifacts when enabled.
 - `Build BentoML Image`: builds only the BentoML predictor image when enabled.
+- `Trivy Image Scan`: scans the BentoML Docker image for HIGH/CRITICAL vulnerabilities when enabled.
 - `Push BentoML Image`: tags and pushes the BentoML image to GCP Artifact Registry when enabled.
 - `Promote Model`: points an MLflow model alias, usually `champion`, at a reviewed model version.
 - `Deploy BentoML`: recreates only the BentoML predictor service.
@@ -255,6 +256,8 @@ Optional MLOps stages are controlled by Jenkins build parameters:
 
 - `BUILD_ALL_IMAGES=true` builds every Docker Compose image.
 - `BUILD_MLOPS_IMAGE=true` builds the BentoML service image.
+- `RUN_TRIVY_IMAGE_SCAN=true` scans the built BentoML image with Trivy.
+- `TRIVY_FAIL_ON_FINDINGS=true` makes HIGH/CRITICAL Trivy findings fail the build. Keep it `false` while establishing the baseline.
 - `PUSH_BENTO_IMAGE=true` pushes the BentoML image to Artifact Registry. Leave `IMAGE_TAG` empty to use `build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}`.
 - `TRAIN_MLOPS_MODEL=true` trains the CPU LightGBM model. Leave `MLOPS_TRAINING_CSV` empty to use the default from `.env`.
 - `PROMOTE_MODEL=true` with `MODEL_VERSION=<version>` and `MODEL_ALIAS=champion` promotes a reviewed MLflow model version.
@@ -287,6 +290,8 @@ DEPLOY_BENTO=true
 
 Push BentoML image:
 BUILD_MLOPS_IMAGE=true
+RUN_TRIVY_IMAGE_SCAN=true
+TRIVY_FAIL_ON_FINDINGS=false
 PUSH_BENTO_IMAGE=true
 IMAGE_TAG=
 TRAIN_MLOPS_MODEL=false
@@ -307,6 +312,12 @@ Pushing the BentoML image archives this file in Jenkins:
 
 ```text
 artifacts/mlops/bento_image_uri.txt
+```
+
+Trivy image scanning archives this file in Jenkins:
+
+```text
+artifacts/security/trivy-image-scan.txt
 ```
 
 For production-like usage, keep `.env` out of Git and manage the real values through Jenkins credentials, a protected file credential, or host-level secret management.
@@ -418,6 +429,37 @@ SONAR_TOKEN=your-token make sonar-scan
 In Jenkins, add the token as a Secret text credential with ID `sonarqube-token`, then run the pipeline with `RUN_SONARQUBE_SCAN=true`. Jenkins uses `SONAR_HOST_URL` from `.env` unless the `SONARQUBE_URL` parameter is set.
 
 The project Jenkins image installs Checkov, so Jenkins CI runs this scan as part of `scripts/ci_check.sh`.
+
+## Image vulnerability scan
+
+Run Trivy against the local BentoML image after building it:
+
+```bash
+COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predictor
+make trivy-image-scan
+```
+
+By default the script reports HIGH and CRITICAL findings without failing:
+
+```text
+TRIVY_EXIT_CODE=0
+```
+
+To turn it into a blocking gate:
+
+```bash
+TRIVY_EXIT_CODE=1 make trivy-image-scan
+```
+
+In Jenkins, use:
+
+```text
+RUN_TRIVY_IMAGE_SCAN=true
+TRIVY_FAIL_ON_FINDINGS=false
+TRIVY_SEVERITY=HIGH,CRITICAL
+```
+
+After the baseline is clean, set `TRIVY_FAIL_ON_FINDINGS=true`.
 
 ## Minimal GKE deploy
 
@@ -676,6 +718,9 @@ Then run the Jenkins job with:
 
 ```text
 BUILD_MLOPS_IMAGE=true
+RUN_TRIVY_IMAGE_SCAN=true
+TRIVY_FAIL_ON_FINDINGS=false
+TRIVY_SEVERITY=HIGH,CRITICAL
 PUSH_BENTO_IMAGE=true
 IMAGE_TAG=
 DEPLOY_GKE=true

@@ -17,6 +17,9 @@ pipeline {
     string(name: 'SONARQUBE_URL', defaultValue: '', description: 'SonarQube URL. If empty, Jenkins uses SONAR_HOST_URL from .env.')
     string(name: 'SONARQUBE_TOKEN_CREDENTIALS_ID', defaultValue: 'sonarqube-token', description: 'Jenkins Secret text credential ID for SonarQube token.')
     booleanParam(name: 'BUILD_MLOPS_IMAGE', defaultValue: true, description: 'Build the BentoML predictor image.')
+    booleanParam(name: 'RUN_TRIVY_IMAGE_SCAN', defaultValue: false, description: 'Run Trivy vulnerability scan on the BentoML image.')
+    booleanParam(name: 'TRIVY_FAIL_ON_FINDINGS', defaultValue: false, description: 'Fail the build when Trivy finds HIGH or CRITICAL issues.')
+    string(name: 'TRIVY_SEVERITY', defaultValue: 'HIGH,CRITICAL', description: 'Trivy severity filter.')
     booleanParam(name: 'PUSH_BENTO_IMAGE', defaultValue: false, description: 'Push the BentoML image to GCP Artifact Registry.')
     string(name: 'IMAGE_TAG', defaultValue: '', description: 'Optional image tag. If empty, Jenkins uses build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}.')
     string(name: 'GCP_PROJECT_ID', defaultValue: 'awesome-pilot-494017-u5', description: 'GCP project ID used for Artifact Registry and GKE deploy.')
@@ -159,6 +162,29 @@ pipeline {
       steps {
         dir("${env.WORKSPACE}") {
           sh 'COMPOSE_PROFILES=mlops docker compose --env-file "$ENV_FILE" build bento-price-predictor'
+        }
+      }
+    }
+
+    stage('Trivy Image Scan') {
+      when {
+        expression { return params.RUN_TRIVY_IMAGE_SCAN }
+      }
+      steps {
+        dir("${env.WORKSPACE}") {
+          sh '''
+            if [ "$TRIVY_FAIL_ON_FINDINGS" = "true" ]; then
+              TRIVY_EXIT_CODE=1
+            else
+              TRIVY_EXIT_CODE=0
+            fi
+
+            TRIVY_REQUIRED=true \
+              TRIVY_SEVERITY="$TRIVY_SEVERITY" \
+              TRIVY_EXIT_CODE="$TRIVY_EXIT_CODE" \
+              bash scripts/trivy_image_scan.sh
+          '''
+          archiveArtifacts artifacts: 'artifacts/security/trivy-image-scan.txt', fingerprint: true, allowEmptyArchive: true
         }
       }
     }
