@@ -20,6 +20,7 @@ pipeline {
     booleanParam(name: 'RUN_TRIVY_IMAGE_SCAN', defaultValue: false, description: 'Run Trivy vulnerability scan on the BentoML image.')
     booleanParam(name: 'TRIVY_FAIL_ON_FINDINGS', defaultValue: false, description: 'Fail the build when Trivy finds HIGH or CRITICAL issues.')
     string(name: 'TRIVY_SEVERITY', defaultValue: 'HIGH,CRITICAL', description: 'Trivy severity filter.')
+    booleanParam(name: 'GENERATE_IMAGE_SBOM', defaultValue: false, description: 'Generate a CycloneDX SBOM for the BentoML image.')
     booleanParam(name: 'PUSH_BENTO_IMAGE', defaultValue: false, description: 'Push the BentoML image to GCP Artifact Registry.')
     string(name: 'IMAGE_TAG', defaultValue: '', description: 'Optional image tag. If empty, Jenkins uses build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}.')
     string(name: 'GCP_PROJECT_ID', defaultValue: 'awesome-pilot-494017-u5', description: 'GCP project ID used for Artifact Registry and GKE deploy.')
@@ -185,6 +186,18 @@ pipeline {
               bash scripts/trivy_image_scan.sh
           '''
           archiveArtifacts artifacts: 'artifacts/security/trivy-image-scan.txt', fingerprint: true, allowEmptyArchive: true
+        }
+      }
+    }
+
+    stage('Generate Image SBOM') {
+      when {
+        expression { return params.GENERATE_IMAGE_SBOM }
+      }
+      steps {
+        dir("${env.WORKSPACE}") {
+          sh 'SBOM_REQUIRED=true bash scripts/generate_image_sbom.sh'
+          archiveArtifacts artifacts: 'artifacts/security/bento-image-sbom.cdx.json', fingerprint: true, allowEmptyArchive: false
         }
       }
     }

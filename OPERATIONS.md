@@ -247,6 +247,7 @@ Pipeline stages:
 - `Train CPU ML Model`: trains the LightGBM model, logs to MLflow, and archives model artifacts when enabled.
 - `Build BentoML Image`: builds only the BentoML predictor image when enabled.
 - `Trivy Image Scan`: scans the BentoML Docker image for HIGH/CRITICAL vulnerabilities when enabled.
+- `Generate Image SBOM`: creates a CycloneDX SBOM for the BentoML Docker image when enabled.
 - `Push BentoML Image`: tags and pushes the BentoML image to GCP Artifact Registry when enabled.
 - `Promote Model`: points an MLflow model alias, usually `champion`, at a reviewed model version.
 - `Deploy BentoML`: recreates only the BentoML predictor service.
@@ -258,6 +259,7 @@ Optional MLOps stages are controlled by Jenkins build parameters:
 - `BUILD_MLOPS_IMAGE=true` builds the BentoML service image.
 - `RUN_TRIVY_IMAGE_SCAN=true` scans the built BentoML image with Trivy.
 - `TRIVY_FAIL_ON_FINDINGS=true` makes HIGH/CRITICAL Trivy findings fail the build. Keep it `false` while establishing the baseline.
+- `GENERATE_IMAGE_SBOM=true` archives a CycloneDX dependency inventory for the built BentoML image.
 - `PUSH_BENTO_IMAGE=true` pushes the BentoML image to Artifact Registry. Leave `IMAGE_TAG` empty to use `build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}`.
 - `TRAIN_MLOPS_MODEL=true` trains the CPU LightGBM model. Leave `MLOPS_TRAINING_CSV` empty to use the default from `.env`.
 - `PROMOTE_MODEL=true` with `MODEL_VERSION=<version>` and `MODEL_ALIAS=champion` promotes a reviewed MLflow model version.
@@ -292,6 +294,7 @@ Push BentoML image:
 BUILD_MLOPS_IMAGE=true
 RUN_TRIVY_IMAGE_SCAN=true
 TRIVY_FAIL_ON_FINDINGS=false
+GENERATE_IMAGE_SBOM=true
 PUSH_BENTO_IMAGE=true
 IMAGE_TAG=
 TRAIN_MLOPS_MODEL=false
@@ -318,6 +321,12 @@ Trivy image scanning archives this file in Jenkins:
 
 ```text
 artifacts/security/trivy-image-scan.txt
+```
+
+SBOM generation archives this file in Jenkins:
+
+```text
+artifacts/security/bento-image-sbom.cdx.json
 ```
 
 For production-like usage, keep `.env` out of Git and manage the real values through Jenkins credentials, a protected file credential, or host-level secret management.
@@ -460,6 +469,23 @@ TRIVY_SEVERITY=HIGH,CRITICAL
 ```
 
 After the baseline is clean, set `TRIVY_FAIL_ON_FINDINGS=true`.
+
+## Image SBOM
+
+Generate a CycloneDX SBOM for the local BentoML image:
+
+```bash
+COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predictor
+make image-sbom
+```
+
+The SBOM lists the OS and application packages included in the image. Archive it with every pushed image so a future vulnerability advisory can be mapped back to the exact deployed artifact.
+
+In Jenkins, use:
+
+```text
+GENERATE_IMAGE_SBOM=true
+```
 
 ## Minimal GKE deploy
 
@@ -721,6 +747,7 @@ BUILD_MLOPS_IMAGE=true
 RUN_TRIVY_IMAGE_SCAN=true
 TRIVY_FAIL_ON_FINDINGS=false
 TRIVY_SEVERITY=HIGH,CRITICAL
+GENERATE_IMAGE_SBOM=true
 PUSH_BENTO_IMAGE=true
 IMAGE_TAG=
 DEPLOY_GKE=true
