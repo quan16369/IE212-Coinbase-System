@@ -1,0 +1,50 @@
+loki:
+  enabled: true
+  persistence:
+    enabled: false
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+promtail:
+  enabled: true
+  defaultVolumes:
+    - name: pods
+      hostPath:
+        path: /var/log/pods
+  defaultVolumeMounts:
+    - name: pods
+      mountPath: /var/log/pods
+      readOnly: true
+  extraVolumes:
+    - name: run
+      emptyDir: {}
+  extraVolumeMounts:
+    - name: run
+      mountPath: /run/promtail
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+grafana:
+  enabled: false
+
+prometheus:
+  enabled: false
+
+fluent-bit:
+  enabled: false
+
+filebeat:
+  enabled: false
+
+logstash:
+  enabled: false

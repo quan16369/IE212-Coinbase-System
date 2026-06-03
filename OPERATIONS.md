@@ -705,9 +705,36 @@ make gke-cloud-logs-bento
 
 This avoids hostPath/privileged pod issues on Autopilot while still giving centralized logs for the BentoML workload.
 
+Optional Loki logging stack:
+
+```bash
+make gke-install-logging
+```
+
+Grafana is configured with this Loki datasource:
+
+```text
+http://loki.logging.svc.cluster.local:3100
+```
+
+If Grafana was installed before Loki, refresh the monitoring release so the datasource appears:
+
+```bash
+make gke-install-monitoring
+```
+
+Then open Grafana Explore, select `Loki`, and query:
+
+```text
+{namespace="app"}
+```
+
+On GKE Autopilot, Promtail can be rejected because it reads node log files. If Promtail does not run, keep using Cloud Logging through `make gke-cloud-logs-bento`.
+
 Remove the monitoring stack when the demo is done:
 
 ```bash
+make gke-uninstall-logging
 make gke-uninstall-monitoring
 ```
 
