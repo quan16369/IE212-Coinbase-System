@@ -677,7 +677,7 @@ terraform plan
 
 ### GKE monitoring and logging
 
-Install the lightweight Prometheus/Grafana stack:
+Install the Prometheus/Grafana stack:
 
 ```bash
 make gke-install-monitoring
@@ -697,15 +697,21 @@ Check that Prometheus has targets:
 up
 ```
 
-For GKE Autopilot logging, use Google Cloud Logging instead of installing a log collector DaemonSet:
+Useful Kubernetes dashboards:
+
+```text
+Kubernetes / Compute Resources / Namespace (Pods)
+Kubernetes / Compute Resources / Pod
+Kubernetes / Networking / Namespace (Workload)
+```
+
+For a quick built-in GKE log check, use Google Cloud Logging:
 
 ```bash
 make gke-cloud-logs-bento
 ```
 
-This avoids hostPath/privileged pod issues on Autopilot while still giving centralized logs for the BentoML workload.
-
-Optional Loki logging stack:
+Install the optional Loki logging stack when you want Grafana Explore logs:
 
 ```bash
 make gke-install-logging
@@ -723,13 +729,40 @@ If Grafana was installed before Loki, refresh the monitoring release so the data
 make gke-install-monitoring
 ```
 
-Then open Grafana Explore, select `Loki`, and query:
+Then open Grafana Explore, select `Loki`, use `Code` mode, set the time range to `Last 1 hour`, and query:
 
-```text
+```logql
 {namespace="app"}
 ```
 
-On GKE Autopilot, Promtail can be rejected because it reads node log files. If Promtail does not run, keep using Cloud Logging through `make gke-cloud-logs-bento`.
+For the BentoML predictor only:
+
+```logql
+{namespace="app", app="bento-price-predictor"}
+```
+
+If the log list is empty, generate a new request and refresh Grafana:
+
+```bash
+BENTO_URL="$(make -s gke-ingress-url-bento)"
+curl -fsS "$BENTO_URL/" >/dev/null
+```
+
+If Grafana shows a warning in `Logs volume` but the `Logs` section displays lines, logging is working. The volume panel can be ignored for this demo.
+
+Check Loki directly from the cluster:
+
+```bash
+kubectl -n logging exec loki-0 -- \
+  wget -qO- 'http://localhost:3100/loki/api/v1/query_range?query=%7Bnamespace%3D%22app%22%7D&limit=5'
+```
+
+Check Promtail and Loki health:
+
+```bash
+make gke-logging-status
+kubectl -n logging exec loki-0 -- wget -qO- http://localhost:3100/ready
+```
 
 Remove the monitoring stack when the demo is done:
 
