@@ -1,0 +1,1 @@
+"""Alert index service."""

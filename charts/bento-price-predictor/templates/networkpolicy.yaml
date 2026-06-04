@@ -13,9 +13,13 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    {{- range .Values.networkPolicy.allowedNamespaces }}
     - from:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . | quote }}
       ports:
         - protocol: TCP
           port: 3000
+    {{- end }}
 {{- end }}

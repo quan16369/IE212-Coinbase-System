@@ -1,0 +1,38 @@
+replicaCount: 1
+namespace: feature-platform
+
+image:
+  repository: asia-southeast1-docker.pkg.dev/PROJECT_ID/coinbase-mlops/coinbase-feature-platform
+  tag: dev
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+
+store:
+  historyLimit: 200
+  online: memory
+  offline: memory
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+podSecurityContext: {}
+
+containerSecurityContext: {}
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70

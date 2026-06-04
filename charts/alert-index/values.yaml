@@ -1,0 +1,34 @@
+namespace: alert-routing
+
+replicaCount: 1
+
+image:
+  repository: asia-southeast1-docker.pkg.dev/PROJECT_ID/coinbase-mlops/coinbase-alert-index
+  tag: dev
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+index:
+  path: /data/alerts.jsonl
+  maxResults: "200"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1

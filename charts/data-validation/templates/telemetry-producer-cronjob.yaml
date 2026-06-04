@@ -1,0 +1,103 @@
+{{- if .Values.telemetryProducer.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "data-validation.fullname" . }}-telemetry-producer
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "data-validation.labels" . | nindent 4 }}
+    app.kubernetes.io/component: telemetry-producer
+spec:
+  schedule: {{ .Values.telemetryProducer.schedule | quote }}
+  successfulJobsHistoryLimit: {{ .Values.telemetryProducer.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.telemetryProducer.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "data-validation.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: telemetry-producer
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.telemetryProducer.runAsUser }}
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: telemetry-producer
+              image: {{ .Values.telemetryProducer.image | quote }}
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                runAsNonRoot: true
+                runAsUser: {{ .Values.telemetryProducer.runAsUser }}
+              command:
+                - sh
+                - -ec
+                - |
+                  BASE_URL="http://{{ include "data-validation.fullname" . }}.{{ .Values.namespace | default .Release.Namespace }}.svc.cluster.local"
+                  FEATURE_PLATFORM_ENABLED="{{ .Values.telemetryProducer.featurePlatform.enabled }}"
+                  FEATURE_PLATFORM_URL="{{ .Values.telemetryProducer.featurePlatform.url }}"
+                  cat >/tmp/payload.json <<'JSON'
+                  {
+                    "records": [
+                      {
+                        "timestamp": "2024-01-01T00:00:00Z",
+                        "symbol": "BTCUSDT",
+                        "open": 42000.0,
+                        "high": 42100.0,
+                        "low": 41900.0,
+                        "close": 42050.0,
+                        "volume": 12.5
+                      },
+                      {
+                        "timestamp": "2024-01-01T00:05:00Z",
+                        "symbol": "BTCUSDT",
+                        "open": 42050.0,
+                        "high": 42020.0,
+                        "low": 42000.0,
+                        "close": 42150.0,
+                        "volume": 8.0
+                      }
+                    ]
+                  }
+                  JSON
+                  cat >/tmp/feature-payload.json <<'JSON'
+                  {
+                    "records": [
+                      {
+                        "timestamp": "2024-01-01T00:00:00Z",
+                        "symbol": "BTCUSDT",
+                        "open": 42000.0,
+                        "high": 42100.0,
+                        "low": 41900.0,
+                        "close": 42050.0,
+                        "volume": 12.5
+                      }
+                    ]
+                  }
+                  JSON
+                  curl -fsS -H 'Content-Type: application/json' --data @/tmp/payload.json "$BASE_URL/validate"
+                  echo
+
+                  if [ "$FEATURE_PLATFORM_ENABLED" = "true" ]; then
+                    curl -fsS -H 'Content-Type: application/json' --data @/tmp/feature-payload.json "$FEATURE_PLATFORM_URL/features/ingest"
+                    echo
+                  fi
+
+                  echo "Telemetry producer validation request completed at $(date -Iseconds)"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+{{- end }}

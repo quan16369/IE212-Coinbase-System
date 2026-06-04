@@ -13,14 +13,14 @@ pipeline {
 
   parameters {
     booleanParam(name: 'BUILD_ALL_IMAGES', defaultValue: false, description: 'Build every Docker Compose image.')
-    booleanParam(name: 'RUN_SONARQUBE_SCAN', defaultValue: false, description: 'Run SonarQube code quality scan.')
+    booleanParam(name: 'RUN_SONARQUBE_SCAN', defaultValue: true, description: 'Run SonarQube code quality scan.')
     string(name: 'SONARQUBE_URL', defaultValue: '', description: 'SonarQube URL. If empty, Jenkins uses SONAR_HOST_URL from .env.')
     string(name: 'SONARQUBE_TOKEN_CREDENTIALS_ID', defaultValue: 'sonarqube-token', description: 'Jenkins Secret text credential ID for SonarQube token.')
     booleanParam(name: 'BUILD_MLOPS_IMAGE', defaultValue: true, description: 'Build the BentoML predictor image.')
-    booleanParam(name: 'RUN_TRIVY_IMAGE_SCAN', defaultValue: false, description: 'Run Trivy vulnerability scan on the BentoML image.')
-    booleanParam(name: 'TRIVY_FAIL_ON_FINDINGS', defaultValue: false, description: 'Fail the build when Trivy finds HIGH or CRITICAL issues.')
+    booleanParam(name: 'RUN_TRIVY_IMAGE_SCAN', defaultValue: true, description: 'Run Trivy vulnerability scan on the BentoML image.')
+    booleanParam(name: 'TRIVY_FAIL_ON_FINDINGS', defaultValue: true, description: 'Fail the build when Trivy finds HIGH or CRITICAL issues.')
     string(name: 'TRIVY_SEVERITY', defaultValue: 'HIGH,CRITICAL', description: 'Trivy severity filter.')
-    booleanParam(name: 'GENERATE_IMAGE_SBOM', defaultValue: false, description: 'Generate a CycloneDX SBOM for the BentoML image.')
+    booleanParam(name: 'GENERATE_IMAGE_SBOM', defaultValue: true, description: 'Generate a CycloneDX SBOM for the BentoML image.')
     booleanParam(name: 'PUSH_BENTO_IMAGE', defaultValue: false, description: 'Push the BentoML image to GCP Artifact Registry.')
     string(name: 'IMAGE_TAG', defaultValue: '', description: 'Optional image tag. If empty, Jenkins uses build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}.')
     string(name: 'GCP_PROJECT_ID', defaultValue: 'awesome-pilot-494017-u5', description: 'GCP project ID used for Artifact Registry and GKE deploy.')
@@ -65,7 +65,7 @@ pipeline {
     stage('CI Checks') {
       steps {
         dir("${env.WORKSPACE}") {
-          sh 'bash scripts/ci_check.sh'
+          sh 'CHECKOV_REQUIRED=true bash scripts/ci_check.sh'
         }
       }
     }

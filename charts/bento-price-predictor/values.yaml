@@ -19,6 +19,13 @@ ingress:
 model:
   fileName: coinbase_ml_model.joblib
 
+tracing:
+  enabled: false
+  serviceName: bento-price-predictor
+  otlpEndpoint: http://otel-collector.tracing.svc.cluster.local:4317
+  sampler: always_on
+  resourceAttributes: deployment.environment=gke,service.namespace=app
+
 resources:
   requests:
     cpu: 250m
@@ -27,21 +34,31 @@ resources:
     cpu: "1"
     memory: 1Gi
 
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 10001
-  runAsGroup: 10001
-  fsGroup: 10001
-  seccompProfile:
-    type: RuntimeDefault
+podSecurityContext: {}
 
-containerSecurityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
-  runAsNonRoot: true
-  runAsUser: 10001
+containerSecurityContext: {}
 
 networkPolicy:
-  enabled: true
+  enabled: false
+  allowedNamespaces:
+    - app
+    - ingress-nginx
+    - monitoring
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+syntheticProbe:
+  enabled: false
+  schedule: "*/5 * * * *"
+  image: curlimages/curl:8.11.1
+  runAsUser: 100
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3

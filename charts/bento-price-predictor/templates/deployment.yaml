@@ -16,14 +16,18 @@ spec:
         {{- include "bento-price-predictor.selectorLabels" . | nindent 8 }}
     spec:
       automountServiceAccountToken: false
+      {{- if .Values.podSecurityContext }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
       containers:
         - name: {{ include "bento-price-predictor.name" . }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.containerSecurityContext }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: 3000
@@ -40,6 +44,20 @@ spec:
               value: "/tmp"
             - name: BENTOML_HOME
               value: "/tmp/bentoml"
+            {{- if .Values.tracing.enabled }}
+            - name: OTEL_SERVICE_NAME
+              value: {{ .Values.tracing.serviceName | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.tracing.otlpEndpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_TRACES_SAMPLER
+              value: {{ .Values.tracing.sampler | quote }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: {{ .Values.tracing.resourceAttributes | quote }}
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /readyz

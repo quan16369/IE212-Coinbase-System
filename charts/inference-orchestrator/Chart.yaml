@@ -1,0 +1,6 @@
+apiVersion: v2
+name: inference-orchestrator
+description: FastAPI inference orchestrator for feature lookup and Bento prediction
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

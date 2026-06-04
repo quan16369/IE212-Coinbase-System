@@ -6,12 +6,16 @@ backups/
 artifacts/*
 !artifacts/mlops/
 !artifacts/mlops/.gitkeep
+!artifacts/data-ingestion/
+artifacts/data-ingestion/*
+!artifacts/data-ingestion/.gitkeep
 mlruns/
 mlflow.db
 bentoml/
 test.py
 __pycache__/
 *.pyc
+.scannerwork/
 Final.code-workspace
 model_producer.py
 cacandles_processor.Dockerfile

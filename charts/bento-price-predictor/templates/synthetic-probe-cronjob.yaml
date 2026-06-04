@@ -1,0 +1,56 @@
+{{- if .Values.syntheticProbe.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "bento-price-predictor.fullname" . }}-synthetic-probe
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "bento-price-predictor.labels" . | nindent 4 }}
+    app.kubernetes.io/component: synthetic-probe
+spec:
+  schedule: {{ .Values.syntheticProbe.schedule | quote }}
+  successfulJobsHistoryLimit: {{ .Values.syntheticProbe.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.syntheticProbe.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "bento-price-predictor.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: synthetic-probe
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: {{ .Values.syntheticProbe.runAsUser }}
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: synthetic-probe
+              image: {{ .Values.syntheticProbe.image | quote }}
+              imagePullPolicy: IfNotPresent
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                runAsNonRoot: true
+                runAsUser: {{ .Values.syntheticProbe.runAsUser }}
+              command:
+                - sh
+                - -ec
+                - |
+                  BASE_URL="http://{{ include "bento-price-predictor.fullname" . }}.{{ .Values.namespace | default .Release.Namespace }}.svc.cluster.local"
+                  curl -fsS "$BASE_URL/readyz"
+                  curl -fsS -X POST "$BASE_URL/health"
+                  echo "Bento synthetic probe passed at $(date -Iseconds)"
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  cpu: 100m
+                  memory: 64Mi
+{{- end }}

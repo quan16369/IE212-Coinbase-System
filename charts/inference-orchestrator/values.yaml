@@ -1,0 +1,45 @@
+namespace: model-serving
+
+replicaCount: 1
+
+image:
+  repository: asia-southeast1-docker.pkg.dev/PROJECT_ID/coinbase-mlops/coinbase-inference-orchestrator
+  tag: dev
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: nginx
+  host: ""
+  path: /orchestrate
+
+bento:
+  predictUrl: http://bento-price-predictor.app.svc.cluster.local/predict
+
+featurePlatform:
+  url: http://feature-platform.feature-platform.svc.cluster.local
+
+alertRuleEngine:
+  url: ""
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1

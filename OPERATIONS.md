@@ -242,23 +242,25 @@ Monitoring and logs are available before public exposure.
 Pipeline stages:
 
 - `Prepare`: creates `.env` from `.env.example` if needed.
-- `CI Checks`: validates Compose, checks Python syntax, and runs Go tests when Go is installed.
+- `CI Checks`: validates Compose, checks Python syntax, lints Helm charts, checks Terraform formatting, runs Go tests when Go is installed, and runs Checkov as a required Jenkins gate.
+- `SonarQube Scan`: required Jenkins code quality gate.
 - `Build Images`: builds all Docker images.
 - `Train CPU ML Model`: trains the LightGBM model, logs to MLflow, and archives model artifacts when enabled.
 - `Build BentoML Image`: builds only the BentoML predictor image when enabled.
-- `Trivy Image Scan`: scans the BentoML Docker image for HIGH/CRITICAL vulnerabilities when enabled.
-- `Generate Image SBOM`: creates a CycloneDX SBOM for the BentoML Docker image when enabled.
+- `Trivy Image Scan`: required Jenkins HIGH/CRITICAL image vulnerability gate.
+- `Generate Image SBOM`: required Jenkins CycloneDX SBOM artifact.
 - `Push BentoML Image`: tags and pushes the BentoML image to GCP Artifact Registry when enabled.
 - `Promote Model`: points an MLflow model alias, usually `champion`, at a reviewed model version.
 - `Deploy BentoML`: recreates only the BentoML predictor service.
 - `Deploy`: runs `scripts/deploy_compose.sh` only on `main` or `master`.
 
-Optional MLOps stages are controlled by Jenkins build parameters:
+MLOps stages are controlled by Jenkins build parameters:
 
 - `BUILD_ALL_IMAGES=true` builds every Docker Compose image.
 - `BUILD_MLOPS_IMAGE=true` builds the BentoML service image.
+- `RUN_SONARQUBE_SCAN=true` runs the SonarQube gate.
 - `RUN_TRIVY_IMAGE_SCAN=true` scans the built BentoML image with Trivy.
-- `TRIVY_FAIL_ON_FINDINGS=true` makes HIGH/CRITICAL Trivy findings fail the build. Keep it `false` while establishing the baseline.
+- `TRIVY_FAIL_ON_FINDINGS=true` makes actionable HIGH/CRITICAL Trivy findings fail the build.
 - `GENERATE_IMAGE_SBOM=true` archives a CycloneDX dependency inventory for the built BentoML image.
 - `PUSH_BENTO_IMAGE=true` pushes the BentoML image to Artifact Registry. Leave `IMAGE_TAG` empty to use `build-${BUILD_NUMBER}-${GIT_COMMIT_SHORT}`.
 - `TRAIN_MLOPS_MODEL=true` trains the CPU LightGBM model. Leave `MLOPS_TRAINING_CSV` empty to use the default from `.env`.
@@ -292,8 +294,9 @@ DEPLOY_BENTO=true
 
 Push BentoML image:
 BUILD_MLOPS_IMAGE=true
+RUN_SONARQUBE_SCAN=true
 RUN_TRIVY_IMAGE_SCAN=true
-TRIVY_FAIL_ON_FINDINGS=false
+TRIVY_FAIL_ON_FINDINGS=true
 GENERATE_IMAGE_SBOM=true
 PUSH_BENTO_IMAGE=true
 IMAGE_TAG=
@@ -419,9 +422,17 @@ CI also calls the same script, but skips it when `checkov` is not installed. To 
 python3 -m pip install --user checkov
 ```
 
+The Jenkins image already installs Checkov, and Jenkins runs:
+
+```bash
+CHECKOV_REQUIRED=true bash scripts/ci_check.sh
+```
+
+So Checkov is a blocking Jenkins gate.
+
 ## SonarQube
 
-SonarQube is optional and runs locally with the CI profile:
+SonarQube is a blocking Jenkins gate. For local setup, run it with the CI profile:
 
 ```bash
 COMPOSE_PROFILES=ci docker compose --env-file .env up -d sonarqube
@@ -435,7 +446,7 @@ Run a scan from your machine:
 SONAR_TOKEN=your-token make sonar-scan
 ```
 
-In Jenkins, add the token as a Secret text credential with ID `sonarqube-token`, then run the pipeline with `RUN_SONARQUBE_SCAN=true`. Jenkins uses `SONAR_HOST_URL` from `.env` unless the `SONARQUBE_URL` parameter is set.
+In Jenkins, add the token as a Secret text credential with ID `sonarqube-token`. `RUN_SONARQUBE_SCAN` defaults to `true`. Jenkins uses `SONAR_HOST_URL` from `.env` unless the `SONARQUBE_URL` parameter is set.
 
 The project Jenkins image installs Checkov, so Jenkins CI runs this scan as part of `scripts/ci_check.sh`.
 
@@ -448,7 +459,7 @@ COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predicto
 make trivy-image-scan
 ```
 
-By default the script reports HIGH and CRITICAL findings without failing:
+For local baseline work, the script can report HIGH and CRITICAL findings without failing:
 
 ```text
 TRIVY_EXIT_CODE=0
@@ -460,15 +471,15 @@ To turn it into a blocking gate:
 TRIVY_EXIT_CODE=1 make trivy-image-scan
 ```
 
-In Jenkins, use:
+The BentoML image uses a multi-stage Dockerfile: build packages stay in the builder stage, and the runtime stage uses `python:3.12-slim-bookworm` with only runtime packages. The Trivy script defaults `TRIVY_IGNORE_UNFIXED=true`, so the gate blocks fixable HIGH/CRITICAL vulnerabilities but does not fail on base-image advisories that have no patched package yet.
+
+In Jenkins, the recommended gate is:
 
 ```text
 RUN_TRIVY_IMAGE_SCAN=true
-TRIVY_FAIL_ON_FINDINGS=false
+TRIVY_FAIL_ON_FINDINGS=true
 TRIVY_SEVERITY=HIGH,CRITICAL
 ```
-
-After the baseline is clean, set `TRIVY_FAIL_ON_FINDINGS=true`.
 
 ## Image SBOM
 
@@ -481,7 +492,7 @@ make image-sbom
 
 The SBOM lists the OS and application packages included in the image. Archive it with every pushed image so a future vulnerability advisory can be mapped back to the exact deployed artifact.
 
-In Jenkins, use:
+In Jenkins, this defaults to:
 
 ```text
 GENERATE_IMAGE_SBOM=true
@@ -494,6 +505,32 @@ After pushing the BentoML image to Artifact Registry and connecting `kubectl` to
 ```bash
 make gke-deploy-bento
 ```
+
+The GKE deploy script is intentionally strict: it deploys only an explicit immutable image URI. The URI must come from one of these sources:
+
+```text
+IMAGE_URI environment variable
+artifacts/mlops/bento_image_uri.txt written by make mlops-push-bento
+```
+
+This avoids accidentally deploying an image tag that was never pushed to Artifact Registry. A normal build/push/deploy sequence is:
+
+```bash
+COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predictor
+IMAGE_TAG="$(git rev-parse --short HEAD)" make mlops-push-bento
+BENTO_INGRESS_ENABLED=true BENTO_TRACING_ENABLED=true make gke-deploy-bento
+```
+
+For emergency rollback or a known image, pass the image explicitly:
+
+```bash
+IMAGE_URI=asia-southeast1-docker.pkg.dev/<project>/<repo>/<image>:<tag> \
+BENTO_INGRESS_ENABLED=true \
+BENTO_TRACING_ENABLED=true \
+make gke-deploy-bento
+```
+
+Helm deploys use `--atomic`, so a failed rollout is rolled back instead of leaving a half-upgraded release.
 
 This creates:
 
@@ -522,6 +559,478 @@ make gke-smoke-bento
 ```
 
 The model artifact is packaged into the BentoML image during Docker build. Train the model before building the image when you want to deploy a fresh model.
+
+Runtime Kubernetes security is intentionally not part of the main demo path. `NetworkPolicy` and app `securityContext` are off by default to keep the deployment easy to reason about.
+
+If you want to re-enable a small NetworkPolicy later, set:
+
+```bash
+BENTO_NETWORK_POLICY_ENABLED=true make gke-deploy-bento
+```
+
+Then Bento accepts in-cluster traffic only from namespaces listed under `networkPolicy.allowedNamespaces` in `charts/bento-price-predictor/values.yaml`.
+
+For a more production-like serving deployment, run at least two replicas and then enable a PodDisruptionBudget:
+
+```bash
+BENTO_INGRESS_ENABLED=true \
+BENTO_TRACING_ENABLED=true \
+BENTO_REPLICA_COUNT=2 \
+BENTO_PDB_ENABLED=true \
+BENTO_PDB_MIN_AVAILABLE=1 \
+make gke-deploy-bento
+```
+
+This lets Kubernetes keep at least one Bento pod available during voluntary disruptions such as node maintenance. Keep `BENTO_PDB_ENABLED=false` when running one replica for a small demo.
+
+Enable HorizontalPodAutoscaler only when you want serving capacity to scale with CPU load. For a one-replica demo, leave it disabled:
+
+```bash
+BENTO_INGRESS_ENABLED=true \
+BENTO_TRACING_ENABLED=true \
+BENTO_REPLICA_COUNT=2 \
+BENTO_PDB_ENABLED=true \
+BENTO_PDB_MIN_AVAILABLE=1 \
+BENTO_AUTOSCALING_ENABLED=true \
+BENTO_AUTOSCALING_MIN_REPLICAS=2 \
+BENTO_AUTOSCALING_MAX_REPLICAS=4 \
+BENTO_AUTOSCALING_TARGET_CPU=70 \
+make gke-deploy-bento
+```
+
+Check the serving rollout, Service, Ingress, HPA, and PDB:
+
+```bash
+make gke-status-bento
+```
+
+Keep autoscaling disabled for short demos when cost matters more than scale testing.
+
+Enable the lightweight synthetic probe CronJob when you want Kubernetes to test the Bento API from inside the cluster:
+
+```bash
+BENTO_INGRESS_ENABLED=true \
+BENTO_TRACING_ENABLED=true \
+BENTO_SYNTHETIC_PROBE_ENABLED=true \
+make gke-deploy-bento
+```
+
+By default it runs every 5 minutes and calls:
+
+```text
+GET /readyz
+POST /health
+```
+
+Run one probe immediately:
+
+```bash
+make gke-run-synthetic-probe-bento
+```
+
+Then inspect the created Job and logs:
+
+```bash
+kubectl -n app get job -l app.kubernetes.io/component=synthetic-probe
+kubectl -n app logs job/<job-name>
+```
+
+### Data ingestion validation service
+
+The first `data-ingestion` namespace component is a small validation API. It validates OHLCV candle records before the pipeline routes data into validated or quality streams.
+
+Build and push the image:
+
+```bash
+make data-validation-build
+IMAGE_TAG="$(git rev-parse --short HEAD)" make data-validation-push
+```
+
+Deploy to GKE:
+
+```bash
+make data-validation-deploy
+```
+
+Enable the demo telemetry producer CronJob when you want the `data-ingestion` namespace to generate sample records and exercise both routes:
+
+```bash
+DATA_VALIDATION_TELEMETRY_PRODUCER_ENABLED=true make data-validation-deploy
+```
+
+To also forward valid telemetry records into the feature platform:
+
+```bash
+DATA_VALIDATION_TELEMETRY_PRODUCER_ENABLED=true \
+DATA_VALIDATION_FEATURE_PLATFORM_ENABLED=true \
+DATA_VALIDATION_FEATURE_PLATFORM_URL=http://feature-platform.feature-platform.svc.cluster.local \
+make data-validation-deploy
+```
+
+This creates:
+
+- namespace `data-ingestion`
+- Helm release `data-validation`
+- Deployment `data-validation`
+- ClusterIP Service `data-validation`
+- optional telemetry producer CronJob
+
+Check status:
+
+```bash
+make data-validation-status
+```
+
+View service logs and namespace events:
+
+```bash
+make data-validation-logs
+make data-validation-events
+```
+
+Smoke test locally:
+
+```bash
+make data-validation-port-forward
+```
+
+From another terminal:
+
+```bash
+make data-validation-smoke
+```
+
+The validation endpoint is:
+
+```text
+POST /validate
+```
+
+It currently checks required fields, positive prices, non-negative volume, OHLC high/low consistency, and strictly increasing timestamps in a batch. The next step is to connect this service to Kafka or object storage and route valid records to the feature platform while storing rejected records for data quality review.
+
+The response includes route targets:
+
+```text
+validated_target=validated-candles
+quality_target=quality-candles
+```
+
+The telemetry producer CronJob sends a mixed sample batch to `/validate`, so logs show one record accepted for the validated route and one rejected for the quality route. Run it immediately with:
+
+```bash
+make data-validation-run-telemetry-producer
+```
+
+Then inspect the job logs:
+
+```bash
+kubectl -n data-ingestion get job -l app.kubernetes.io/component=telemetry-producer
+kubectl -n data-ingestion logs job/<job-name>
+```
+
+If feature forwarding is enabled, the same job also sends the valid sample record to:
+
+```text
+POST http://feature-platform.feature-platform.svc.cluster.local/features/ingest
+```
+
+Verify it from your local machine by port-forwarding the feature platform and reading the latest feature:
+
+```bash
+make feature-platform-port-forward
+FEATURE_PLATFORM_URL=http://localhost:8090 make feature-platform-smoke
+```
+
+To change route names:
+
+```bash
+DATA_VALIDATION_VALIDATED_TARGET=validated-candles \
+DATA_VALIDATION_QUALITY_TARGET=quality-candles \
+make data-validation-deploy
+```
+
+The monitoring stack includes Prometheus alerts for this namespace:
+
+- `DataValidationUnavailable`
+- `DataValidationRestarting`
+- `DataValidationProblemPods`
+- `DataValidationTelemetryProducerFailed`
+
+Apply or refresh the monitoring rules with:
+
+```bash
+make gke-install-monitoring
+```
+
+Then check Prometheus rule health:
+
+```bash
+PORT=9091 make gke-monitoring-prometheus
+```
+
+Browse to `http://localhost:9091`, then open `Status > Rule health` and search for `data-validation`.
+
+To remove only this data-ingestion service:
+
+```bash
+make data-validation-delete
+```
+
+### Feature platform service
+
+The first `feature-platform` namespace component is a small feature API. It receives validated candle records, computes simple online features, and exposes latest/history endpoints. The first version uses an in-memory store so the demo stays cheap and easy to reset. Redis/PostgreSQL can replace this later without changing the upstream validation API shape.
+
+Build and push the image:
+
+```bash
+make feature-platform-build
+IMAGE_TAG="$(git rev-parse --short HEAD)" make feature-platform-push
+```
+
+Deploy to GKE:
+
+```bash
+make feature-platform-deploy
+```
+
+This creates:
+
+- namespace `feature-platform`
+- Helm release `feature-platform`
+- Deployment `feature-platform`
+- ClusterIP Service `feature-platform`
+
+Check status:
+
+```bash
+make feature-platform-status
+```
+
+Smoke test locally:
+
+```bash
+make feature-platform-port-forward
+```
+
+From another terminal:
+
+```bash
+FEATURE_PLATFORM_URL=http://localhost:8090 make feature-platform-smoke
+```
+
+The main endpoints are:
+
+```text
+POST /features/ingest
+GET /features/latest/{symbol}
+GET /features/history/{symbol}
+```
+
+The current feature set includes return, log return, volume change, high/low spread, open/close spread, and rolling close means for windows 3, 6, and 12.
+
+To remove only this feature service:
+
+```bash
+make feature-platform-delete
+```
+
+### Alert rule engine service
+
+The `alert-routing` namespace contains a small `alert-rule-engine` API. It evaluates prediction results and creates alerts when the absolute predicted return crosses a threshold. It keeps a short in-memory history and can also forward created alerts to the alert index service.
+
+Build and push the image:
+
+```bash
+make alert-rule-engine-build
+IMAGE_TAG="$(git rev-parse --short HEAD)" make alert-rule-engine-push
+```
+
+Deploy to GKE:
+
+```bash
+make alert-rule-engine-deploy
+```
+
+To forward triggered alerts into the alert index, deploy with:
+
+```bash
+ALERT_INDEX_URL=http://alert-index.alert-routing.svc.cluster.local \
+make alert-rule-engine-deploy
+```
+
+Check status:
+
+```bash
+make alert-rule-engine-status
+```
+
+Smoke test locally:
+
+```bash
+make alert-rule-engine-port-forward
+```
+
+From another terminal:
+
+```bash
+ALERT_RULE_ENGINE_URL=http://localhost:8092 make alert-rule-engine-smoke
+```
+
+The main endpoints are:
+
+```text
+GET /config
+POST /alerts/evaluate
+GET /alerts
+```
+
+To remove only this alert service:
+
+```bash
+make alert-rule-engine-delete
+```
+
+### Alert index service
+
+The `alert-index` service stores triggered alerts so the demo has a separate alert history component like the diagram's alert index. This first version writes JSONL to an `emptyDir` volume inside the pod. That is enough for a resettable demo; replace it with PostgreSQL when alerts need to survive pod deletion.
+
+Build and push the image:
+
+```bash
+make alert-index-build
+IMAGE_TAG="$(git rev-parse --short HEAD)" make alert-index-push
+```
+
+Deploy to GKE:
+
+```bash
+make alert-index-deploy
+```
+
+Check status:
+
+```bash
+make alert-index-status
+```
+
+Smoke test locally:
+
+```bash
+make alert-index-port-forward
+```
+
+From another terminal:
+
+```bash
+ALERT_INDEX_URL=http://localhost:8093 make alert-index-smoke
+```
+
+The main endpoints are:
+
+```text
+GET /config
+POST /alerts
+GET /alerts
+GET /alerts/{alert_id}
+```
+
+To remove only this alert index:
+
+```bash
+make alert-index-delete
+```
+
+### Inference orchestrator service
+
+The `model-serving` namespace contains a small `inference-orchestrator` API. It receives recent candle history, calls BentoML for prediction, and attaches the latest feature context from the feature platform. This matches the diagram's inference orchestration layer without adding a database or queue yet.
+
+Build and push the image:
+
+```bash
+make inference-orchestrator-build
+IMAGE_TAG="$(git rev-parse --short HEAD)" make inference-orchestrator-push
+```
+
+Deploy to GKE:
+
+```bash
+make inference-orchestrator-deploy
+```
+
+To forward predictions to the alert rule engine, deploy with:
+
+```bash
+ALERT_RULE_ENGINE_URL=http://alert-rule-engine.alert-routing.svc.cluster.local \
+make inference-orchestrator-deploy
+```
+
+Expose the orchestrator as the public prediction API through nginx ingress:
+
+```bash
+ALERT_RULE_ENGINE_URL=http://alert-rule-engine.alert-routing.svc.cluster.local \
+make inference-orchestrator-ingress
+```
+
+Get the public base URL:
+
+```bash
+make inference-orchestrator-public-url
+```
+
+The public endpoint is:
+
+```text
+POST http://<ingress-ip>/orchestrate/predict
+```
+
+Smoke test the public API:
+
+```bash
+make inference-orchestrator-smoke-public
+```
+
+BentoML should stay internal in this flow. External clients call the orchestrator, and the orchestrator calls BentoML, feature-platform, alert-rule-engine, and alert-index inside the cluster.
+
+By default it calls these in-cluster services:
+
+```text
+http://bento-price-predictor.app.svc.cluster.local/predict
+http://feature-platform.feature-platform.svc.cluster.local
+http://alert-rule-engine.alert-routing.svc.cluster.local
+```
+
+Check status:
+
+```bash
+make inference-orchestrator-status
+make inference-orchestrator-ingress-status
+```
+
+Smoke test locally:
+
+```bash
+make inference-orchestrator-port-forward
+```
+
+From another terminal:
+
+```bash
+INFERENCE_ORCHESTRATOR_URL=http://localhost:8091 make inference-orchestrator-smoke
+```
+
+The main endpoints are:
+
+```text
+GET /config
+POST /orchestrate/predict
+GET /orchestrate/latest/{symbol}
+```
+
+To remove only this inference service:
+
+```bash
+make inference-orchestrator-delete
+```
 
 ### Minimal GKE monitoring and logs
 
@@ -705,6 +1214,61 @@ Kubernetes / Compute Resources / Pod
 Kubernetes / Networking / Namespace (Workload)
 ```
 
+The monitoring install also provisions a project dashboard:
+
+```text
+Coinbase / Bento Price Predictor
+```
+
+It contains available/ready replicas, problem pod count, restart trend, recent Bento logs, and warning/error logs. If the dashboard is not visible right after reinstalling monitoring, wait for the Grafana sidecar refresh or restart Grafana:
+
+```bash
+kubectl -n monitoring rollout restart deploy/kube-prometheus-stack-grafana
+```
+
+It also provisions lightweight Prometheus alerts for Bento:
+
+```text
+BentoPredictorUnavailable
+BentoPredictorRestarting
+BentoPredictorProblemPods
+```
+
+Alertmanager is enabled with a no-op receiver by default so alerts have proper grouping, silencing, and lifecycle state without sending external notifications.
+
+Open Alertmanager locally:
+
+```bash
+PORT=9094 make gke-monitoring-alertmanager
+```
+
+Then browse:
+
+```text
+http://localhost:9094
+```
+
+To route alerts to a webhook receiver, reinstall monitoring with:
+
+```bash
+ALERTMANAGER_WEBHOOK_URL="https://example.com/alert-webhook" make gke-install-monitoring
+```
+
+For real production, use a controlled destination such as Slack, PagerDuty, Google Chat, or an internal webhook service, and store the receiver URL in your secret manager or CI credentials instead of committing it.
+
+To test the alert path, temporarily make the Bento deployment unavailable:
+
+```bash
+kubectl -n app scale deploy/bento-price-predictor --replicas=0
+```
+
+Wait at least 2 minutes, then check Alertmanager. Restore the service after the test:
+
+```bash
+kubectl -n app scale deploy/bento-price-predictor --replicas=1
+kubectl -n app rollout status deploy/bento-price-predictor
+```
+
 For a quick built-in GKE log check, use Google Cloud Logging:
 
 ```bash
@@ -764,9 +1328,89 @@ make gke-logging-status
 kubectl -n logging exec loki-0 -- wget -qO- http://localhost:3100/ready
 ```
 
+Install the optional production-style tracing stack when you want Grafana Explore traces:
+
+```bash
+make gke-install-tracing
+```
+
+This installs:
+
+```text
+OpenTelemetry Collector: receives OTLP from application workloads
+Tempo: stores and queries traces
+```
+
+Trace flow:
+
+```text
+BentoML predictor
+-> otel-collector.tracing.svc.cluster.local:4317
+-> tempo.tracing.svc.cluster.local:4317
+-> Grafana Tempo datasource
+```
+
+Grafana is configured with this Tempo datasource:
+
+```text
+http://tempo.tracing.svc.cluster.local:3200
+```
+
+If Grafana was installed before Tempo, refresh the monitoring release so the datasource appears:
+
+```bash
+make gke-install-monitoring
+```
+
+Redeploy BentoML with OTLP tracing environment variables:
+
+```bash
+BENTO_TRACING_ENABLED=true make gke-deploy-bento
+```
+
+If the app is exposed through nginx ingress, keep ingress enabled while redeploying:
+
+```bash
+BENTO_INGRESS_ENABLED=true BENTO_TRACING_ENABLED=true make gke-deploy-bento
+```
+
+Generate a request so traces/logs have fresh traffic:
+
+```bash
+BENTO_URL="$(make -s gke-ingress-url-bento)"
+curl -fsS "$BENTO_URL/" >/dev/null
+```
+
+Open Grafana Explore, select `Tempo`, and search by trace ID. BentoML request logs include a `trace=<id>` field, which is useful for checking trace/log correlation. If Tempo has no traces, keep using Loki logs and Prometheus metrics; the tracing backend is optional for this demo and can be wired deeper once application instrumentation is in scope.
+
+The GKE chart enables these OpenTelemetry settings when tracing is on:
+
+```text
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector.tracing.svc.cluster.local:4317
+OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+OTEL_TRACES_EXPORTER=otlp
+OTEL_TRACES_SAMPLER=always_on
+OTEL_RESOURCE_ATTRIBUTES=deployment.environment=gke,service.namespace=app
+```
+
+The BentoML image includes the OTLP gRPC exporter dependency so the runtime can send spans to the collector.
+
+Check tracing status:
+
+```bash
+make gke-tracing-status
+```
+
+Check the collector logs when traces do not arrive:
+
+```bash
+kubectl -n tracing logs deploy/otel-collector --tail=80
+```
+
 Remove the monitoring stack when the demo is done:
 
 ```bash
+make gke-uninstall-tracing
 make gke-uninstall-logging
 make gke-uninstall-monitoring
 ```
@@ -804,8 +1448,10 @@ Then run the Jenkins job with:
 
 ```text
 BUILD_MLOPS_IMAGE=true
+RUN_SONARQUBE_SCAN=true
+SONARQUBE_URL=http://sonarqube:9000
 RUN_TRIVY_IMAGE_SCAN=true
-TRIVY_FAIL_ON_FINDINGS=false
+TRIVY_FAIL_ON_FINDINGS=true
 TRIVY_SEVERITY=HIGH,CRITICAL
 GENERATE_IMAGE_SBOM=true
 PUSH_BENTO_IMAGE=true
@@ -939,6 +1585,10 @@ SONARQUBE_URL=http://sonarqube:9000
 SONARQUBE_TOKEN_CREDENTIALS_ID=sonarqube-token
 
 BUILD_MLOPS_IMAGE=true
+RUN_TRIVY_IMAGE_SCAN=true
+TRIVY_FAIL_ON_FINDINGS=true
+TRIVY_SEVERITY=HIGH,CRITICAL
+GENERATE_IMAGE_SBOM=true
 PUSH_BENTO_IMAGE=true
 IMAGE_TAG=
 IMAGE_URI=

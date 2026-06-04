@@ -1,0 +1,6 @@
+apiVersion: v2
+name: alert-rule-engine
+description: FastAPI alert rule engine for prediction thresholds
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

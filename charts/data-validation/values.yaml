@@ -1,0 +1,54 @@
+replicaCount: 1
+namespace: data-ingestion
+
+image:
+  repository: asia-southeast1-docker.pkg.dev/PROJECT_ID/coinbase-mlops/coinbase-data-validation
+  tag: dev
+  pullPolicy: Always
+
+service:
+  type: ClusterIP
+  port: 80
+
+routing:
+  validatedTarget: validated-candles
+  qualityTarget: quality-candles
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi
+
+podSecurityContext: {}
+
+containerSecurityContext: {}
+
+networkPolicy:
+  enabled: false
+  allowedNamespaces:
+    - data-ingestion
+    - monitoring
+
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 70
+
+telemetryProducer:
+  enabled: false
+  schedule: "*/5 * * * *"
+  image: curlimages/curl:8.11.1
+  runAsUser: 100
+  featurePlatform:
+    enabled: false
+    url: http://feature-platform.feature-platform.svc.cluster.local
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
