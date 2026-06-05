@@ -4,8 +4,8 @@ set -euo pipefail
 NAMESPACE="${MONITORING_NAMESPACE:-monitoring}"
 RELEASE="${MONITORING_RELEASE:-kube-prometheus-stack}"
 CHART_VERSION="${KUBE_PROMETHEUS_STACK_VERSION:-}"
-VALUES_FILE="${MONITORING_VALUES_FILE:-monitoring/gke/kube-prometheus-stack-values.yaml}"
-DASHBOARD_FILE="${BENTO_DASHBOARD_FILE:-monitoring/gke/dashboards/bento-price-predictor.json}"
+VALUES_FILE="${MONITORING_VALUES_FILE:-ops/observability/monitoring/gke/kube-prometheus-stack-values.yaml}"
+DASHBOARD_FILE="${BENTO_DASHBOARD_FILE:-ops/observability/monitoring/gke/dashboards/bento-price-predictor.json}"
 DASHBOARD_CONFIGMAP="${BENTO_DASHBOARD_CONFIGMAP:-bento-price-predictor-dashboard}"
 ALERTMANAGER_WEBHOOK_URL="${ALERTMANAGER_WEBHOOK_URL:-}"
 

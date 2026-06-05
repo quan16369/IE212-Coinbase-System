@@ -39,7 +39,7 @@ gcloud container clusters get-credentials coinbase-mlops --region=asia-southeast
 gcloud auth configure-docker asia-southeast1-docker.pkg.dev
 ```
 
-Build and push all demo images with one immutable tag:
+Build and push all demo images with one immutable tag. The Bento image must be built from `mlops/bento.Dockerfile`; it installs `libgomp1`, which is required by LightGBM at runtime.
 
 ```bash
 IMAGE_TAG="$(git rev-parse --short HEAD)"
@@ -63,11 +63,16 @@ make inference-orchestrator-build
 IMAGE_TAG="$IMAGE_TAG" make inference-orchestrator-push
 ```
 
-Deploy the application stack in dependency order:
+Deploy the application stack in dependency order. For the current demo, keep one replica and leave NetworkPolicy, PDB, and HPA disabled unless you explicitly want to test those controls.
 
 ```bash
-BENTO_NETWORK_POLICY_ENABLED=false make gke-deploy-bento
+BENTO_NETWORK_POLICY_ENABLED=false \
+BENTO_PDB_ENABLED=false \
+BENTO_AUTOSCALING_ENABLED=false \
+make gke-deploy-bento
 
+FEATURE_PLATFORM_PDB_ENABLED=false \
+FEATURE_PLATFORM_AUTOSCALING_ENABLED=false \
 make feature-platform-deploy
 
 DATA_VALIDATION_FEATURE_PLATFORM_ENABLED=true \
@@ -107,6 +112,21 @@ conda activate openex-ai
 make inference-orchestrator-smoke-public
 ```
 
+If you already know the ingress URL, test it explicitly:
+
+```bash
+INFERENCE_ORCHESTRATOR_URL=http://<ingress-ip> make inference-orchestrator-smoke
+```
+
+Expected smoke output:
+
+```text
+prediction exists
+alert_evaluation.triggered is true or false
+alert_evaluation.indexed is true when an alert is triggered
+sources.bento_predict_url points to the in-cluster Bento service
+```
+
 Optional observability stack:
 
 ```bash
@@ -116,6 +136,226 @@ make gke-install-tracing
 ```
 
 For cost-sensitive demos, install only `gke-install-monitoring` unless you need Loki logs or Tempo traces in the UI.
+
+After installing tracing, refresh Grafana datasources and redeploy Bento with tracing enabled:
+
+```bash
+make gke-install-monitoring
+
+BENTO_TRACING_ENABLED=true \
+BENTO_NETWORK_POLICY_ENABLED=false \
+BENTO_PDB_ENABLED=false \
+BENTO_AUTOSCALING_ENABLED=false \
+make gke-deploy-bento
+```
+
+Run another public smoke test after tracing is enabled so Grafana/Loki/Tempo have fresh request data.
+
+### Production-Style MLOps Additions
+
+The demo now includes the next operational pieces from the target architecture:
+
+- Workflow orchestration: Airflow DAG `coinbase_mlops_retraining`.
+- Feature store: Redis online store plus PostgreSQL offline store in the `feature-platform` Helm chart.
+- Data/model versioning: hash manifest for training data, model artifact, and Git SHA.
+- Feedback loop: feature-platform drift endpoint returns a retraining signal.
+- Drift monitoring: CLI and Airflow task read `/feedback/retraining-signal/{symbol}`.
+
+Deploy the feature platform with real stores on GKE:
+
+```bash
+make feature-platform-build
+IMAGE_TAG="$(git rev-parse --short HEAD)" make feature-platform-push
+
+FEATURE_ONLINE_STORE=redis \
+FEATURE_OFFLINE_STORE=postgres \
+FEATURE_DATA_VERSION="$(git rev-parse --short HEAD)" \
+FEATURE_PLATFORM_PDB_ENABLED=false \
+FEATURE_PLATFORM_AUTOSCALING_ENABLED=false \
+make feature-platform-deploy
+```
+
+Smoke test the feature store locally through port-forward:
+
+```bash
+PORT=8090 make feature-platform-port-forward
+```
+
+In another terminal:
+
+```bash
+FEATURE_PLATFORM_URL=http://localhost:8090 make feature-platform-smoke
+FEATURE_PLATFORM_URL=http://localhost:8090 make mlops-drift-check
+```
+
+Expected feature store status:
+
+```text
+online.configured = redis
+online.connected = true
+offline.configured = postgres
+offline.connected = true
+```
+
+Create a reproducible data/model version manifest:
+
+```bash
+DATA=/home/quan/projects/Coinbase_Streaming/data/BTCUSDT_5m_full.csv \
+make mlops-version-manifest
+```
+
+The manifest is written to:
+
+```text
+artifacts/mlops/data_version_manifest.json
+```
+
+Start Airflow locally for orchestration:
+
+```bash
+COMPOSE_PROFILES=orchestration docker compose --env-file .env up -d airflow
+make airflow-logs
+```
+
+Open Airflow:
+
+```text
+http://localhost:8089
+```
+
+Use DAG:
+
+```text
+coinbase_mlops_retraining
+```
+
+The DAG flow is:
+
+```text
+check feature drift -> choose train/skip -> train model -> create version manifest -> summarize -> optional promote
+```
+
+By default it does not promote a model. To force a demo retrain:
+
+```bash
+AIRFLOW_FORCE_RETRAIN=true COMPOSE_PROFILES=orchestration docker compose --env-file .env up -d airflow
+```
+
+Only enable automatic promotion when you intentionally provide `MODEL_VERSION`:
+
+```bash
+AIRFLOW_PROMOTE_MODEL=true MODEL_VERSION=<mlflow-version> COMPOSE_PROFILES=orchestration docker compose --env-file .env up -d airflow
+```
+
+### Test Checklist
+
+Use this checklist after starting the stack from zero.
+
+Core runtime:
+
+```bash
+make inference-orchestrator-public-url
+INFERENCE_ORCHESTRATOR_URL=http://<ingress-ip> make inference-orchestrator-smoke
+```
+
+Service health:
+
+```bash
+make gke-status-bento
+make feature-platform-status
+make data-validation-status
+make alert-index-status
+make alert-rule-engine-status
+make inference-orchestrator-status
+```
+
+Logs:
+
+```bash
+make gke-logs-bento
+make inference-orchestrator-logs
+make alert-rule-engine-logs
+make alert-index-logs
+```
+
+Monitoring:
+
+```bash
+make gke-monitoring-status
+PORT=3003 make gke-monitoring-grafana
+```
+
+Open Grafana at `http://localhost:3003`, login with `admin / admin`, then open:
+
+```text
+Dashboards -> Coinbase / Bento Price Predictor
+Explore -> Loki
+Explore -> Tempo
+```
+
+Useful Loki query examples:
+
+```text
+{namespace="app", app="bento-price-predictor"}
+{namespace="model-serving", app="inference-orchestrator"}
+{namespace="alert-routing", app="alert-rule-engine"}
+```
+
+Useful Prometheus checks:
+
+```text
+kube_deployment_status_replicas_available{namespace="app", deployment="bento-price-predictor"}
+sum(increase(kube_pod_container_status_restarts_total{namespace="app", container="bento-price-predictor"}[5m]))
+```
+
+Alerting:
+
+```bash
+PORT=9091 make gke-monitoring-prometheus
+PORT=9094 make gke-monitoring-alertmanager
+```
+
+Open:
+
+```text
+http://localhost:9091/alerts
+http://localhost:9094
+```
+
+### Common Recovery
+
+If Bento repeatedly restarts and logs contain this error:
+
+```text
+OSError: libgomp.so.1: cannot open shared object file
+```
+
+Rebuild and push the Bento image after confirming `mlops/bento.Dockerfile` installs `libgomp1`:
+
+```bash
+IMAGE_TAG="$(git rev-parse --short HEAD)-libgomp"
+docker build -f mlops/bento.Dockerfile -t coinbase_streaming-bento-price-predictor:latest .
+IMAGE_TAG="$IMAGE_TAG" make mlops-push-bento
+
+HELM_TIMEOUT=600s \
+BENTO_NETWORK_POLICY_ENABLED=false \
+BENTO_PDB_ENABLED=false \
+BENTO_AUTOSCALING_ENABLED=false \
+make gke-deploy-bento
+```
+
+If creating an Ingress fails with `no endpoints available for service "ingress-nginx-controller-admission"`, wait for the nginx controller and rerun:
+
+```bash
+kubectl -n ingress-nginx wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=180s
+make inference-orchestrator-ingress
+```
+
+If `make inference-orchestrator-public-url` prints an empty URL, wait for the cloud LoadBalancer:
+
+```bash
+kubectl -n ingress-nginx get svc ingress-nginx-controller -w
+```
 
 ### Check Current State
 
@@ -159,6 +399,12 @@ make feature-platform-delete
 make gke-delete-bento
 ```
 
+If the feature platform used PostgreSQL, delete its demo PVC after the Helm release is removed:
+
+```bash
+kubectl -n feature-platform delete pvc -l app.kubernetes.io/name=feature-platform --ignore-not-found
+```
+
 Finally destroy Terraform-managed GCP resources:
 
 ```bash
@@ -172,12 +418,30 @@ If you only want to stop local Docker Compose services:
 docker compose --env-file .env down
 ```
 
+If you also started Airflow locally and want to remove its local state:
+
+```bash
+COMPOSE_PROFILES=orchestration docker compose --env-file .env down
+```
+
 After `terraform destroy`, verify there is no cluster and no Artifact Registry repository left:
 
 ```bash
 gcloud container clusters list --region=asia-southeast1
 gcloud artifacts repositories list --location=asia-southeast1
 ```
+
+### Remaining Work Before Merge
+
+The current branch is enough for a working demo. To make the ops stack cleaner before merging to `main`, finish these items:
+
+- Add a single `make gke-smoke-full-stack` target that runs the public orchestrator smoke test plus basic Kubernetes status checks.
+- Decide whether `artifacts/mlops/bento_image_uri.txt` should stay committed or be generated only by CI. For production, prefer generated CI artifacts and immutable image tags.
+- Add `checkov` installation to the Jenkins image or docs, because Jenkins treats Checkov as required while local `ci_check.sh` currently skips it when missing.
+- Make Grafana/Loki/Tempo query examples permanent in `OPERATIONS.md` after verifying the exact labels in the live cluster.
+- Decide whether to keep tracing enabled by default for Bento or only enable it during observability demos.
+- Add a short architecture section mapping the deployed services to the diagram: ingestion, feature platform, model serving, alert routing, dashboard, monitoring, logging, tracing.
+- Add a cost note explaining that GKE Autopilot, nginx LoadBalancer, monitoring stack, and Artifact Registry storage are the main billable resources.
 
 ## Local or single-host deployment
 
@@ -1959,7 +2223,7 @@ The `ops` Compose profile starts:
 - cAdvisor for container metrics.
 - Loki and Promtail for Docker container logs.
 
-Alert rules live in `monitoring/prometheus/alerts.yml`. Alertmanager currently uses a local no-op receiver so alerts are visible in the UI but not sent externally. Add Slack, email, or webhook receivers in `monitoring/alertmanager/alertmanager.yml` when you have a destination.
+Alert rules live in `ops/observability/monitoring/prometheus/alerts.yml`. Alertmanager currently uses a local no-op receiver so alerts are visible in the UI but not sent externally. Add Slack, email, or webhook receivers in `ops/observability/monitoring/alertmanager/alertmanager.yml` when you have a destination.
 
 ## Cassandra migrations
 

@@ -26,6 +26,8 @@ def request(method: str, path: str, payload: dict | None = None) -> dict:
 def main() -> int:
     start = datetime(2026, 1, 1, tzinfo=timezone.utc)
     payload = {
+        "source": "smoke-test",
+        "data_version": "smoke-2026-01-01",
         "records": [
             {
                 "timestamp": (start + timedelta(minutes=5 * index)).isoformat(),
@@ -36,18 +38,42 @@ def main() -> int:
                 "close": 93050 + index * 12,
                 "volume": 100 + index,
             }
-            for index in range(4)
+            for index in range(36)
         ]
     }
 
     try:
+        status = request("GET", "/store/status")
         ingest = request("POST", "/features/ingest", payload)
         latest = request("GET", "/features/latest/BTCUSDT")
+        history = request("GET", "/features/history/BTCUSDT?limit=5")
+        retraining = request("GET", "/feedback/retraining-signal/BTCUSDT")
     except urllib.error.URLError as exc:
         print(f"Could not reach feature platform at {BASE_URL}: {exc}", file=sys.stderr)
         return 1
 
-    print(json.dumps({"ingest": ingest, "latest": latest}, indent=2))
+    if ingest["online_store"] not in {"memory", "redis"}:
+        print(f"Unexpected online store: {ingest['online_store']}", file=sys.stderr)
+        return 1
+    if ingest["offline_store"] not in {"memory", "postgres"}:
+        print(f"Unexpected offline store: {ingest['offline_store']}", file=sys.stderr)
+        return 1
+    if ingest["data_version"] != "smoke-2026-01-01":
+        print(f"Unexpected data version: {ingest['data_version']}", file=sys.stderr)
+        return 1
+
+    print(
+        json.dumps(
+            {
+                "status": status,
+                "ingest": ingest,
+                "latest": latest,
+                "history_tail": history,
+                "retraining_signal": retraining,
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

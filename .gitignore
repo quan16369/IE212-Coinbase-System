@@ -6,6 +6,11 @@ backups/
 artifacts/*
 !artifacts/mlops/
 !artifacts/mlops/.gitkeep
+!artifacts/mlops/coinbase_ml_model.joblib
+!artifacts/mlops/coinbase_ml_model.metadata.json
+artifacts/mlops/*_image_uri.txt
+artifacts/mlops/training_summary.*
+artifacts/mlops/data_version_manifest.json
 !artifacts/data-ingestion/
 artifacts/data-ingestion/*
 !artifacts/data-ingestion/.gitkeep

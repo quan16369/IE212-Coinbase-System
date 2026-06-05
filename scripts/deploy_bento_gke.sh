@@ -2,6 +2,14 @@
 set -euo pipefail
 
 ENV_FILE="${ENV_FILE:-.env}"
+
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "./$ENV_FILE"
+  set +a
+fi
+
 NAMESPACE="${K8S_NAMESPACE:-app}"
 IMAGE_URI="${IMAGE_URI:-}"
 HELM_RELEASE="${HELM_RELEASE:-bento-price-predictor}"
@@ -25,13 +33,6 @@ SYNTHETIC_PROBE_ENABLED="${BENTO_SYNTHETIC_PROBE_ENABLED:-}"
 SYNTHETIC_PROBE_SCHEDULE="${BENTO_SYNTHETIC_PROBE_SCHEDULE:-}"
 HELM_TIMEOUT="${HELM_TIMEOUT:-300s}"
 
-if [[ -f "$ENV_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  . "./$ENV_FILE"
-  set +a
-fi
-
 if [[ -z "$IMAGE_URI" ]]; then
   if [[ -f artifacts/mlops/bento_image_uri.txt ]]; then
     IMAGE_URI="$(cat artifacts/mlops/bento_image_uri.txt)"
@@ -49,7 +50,7 @@ fi
 IMAGE_REPOSITORY="${IMAGE_URI%:*}"
 IMAGE_TAG="${IMAGE_URI##*:}"
 
-kubectl apply -f k8s/bento/namespace.yaml
+kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 kubectl -n "$NAMESPACE" delete configmap bento-model-artifact --ignore-not-found
 
 HELM_ARGS=(

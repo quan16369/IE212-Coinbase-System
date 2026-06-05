@@ -38,6 +38,24 @@ spec:
               value: {{ .Values.store.online | quote }}
             - name: FEATURE_OFFLINE_STORE
               value: {{ .Values.store.offline | quote }}
+            - name: FEATURE_REDIS_URL
+              value: {{ .Values.store.redis.url | quote }}
+            {{- if .Values.store.postgres.enabled }}
+            - name: FEATURE_POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "feature-platform.fullname" . }}-postgres
+                  key: dsn
+            {{- else }}
+            - name: FEATURE_POSTGRES_DSN
+              value: {{ .Values.store.postgres.dsn | quote }}
+            {{- end }}
+            - name: FEATURE_DATA_VERSION
+              value: {{ .Values.store.dataVersion | quote }}
+            - name: FEATURE_DRIFT_RETURN_DELTA_THRESHOLD
+              value: {{ .Values.store.drift.returnDeltaThreshold | quote }}
+            - name: FEATURE_DRIFT_VOLUME_DELTA_RATIO_THRESHOLD
+              value: {{ .Values.store.drift.volumeDeltaRatioThreshold | quote }}
           readinessProbe:
             httpGet:
               path: /readyz

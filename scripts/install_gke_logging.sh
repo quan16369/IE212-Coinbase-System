@@ -4,7 +4,7 @@ set -euo pipefail
 NAMESPACE="${LOGGING_NAMESPACE:-logging}"
 RELEASE="${LOKI_RELEASE:-loki}"
 CHART_VERSION="${LOKI_STACK_VERSION:-}"
-VALUES_FILE="${LOGGING_VALUES_FILE:-monitoring/gke/loki-stack-values.yaml}"
+VALUES_FILE="${LOGGING_VALUES_FILE:-ops/observability/monitoring/gke/loki-stack-values.yaml}"
 
 helm repo add grafana https://grafana.github.io/helm-charts >/dev/null
 helm repo update

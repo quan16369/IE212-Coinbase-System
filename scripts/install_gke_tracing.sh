@@ -6,8 +6,8 @@ TEMPO_RELEASE="${TEMPO_RELEASE:-tempo}"
 OTEL_RELEASE="${OTEL_COLLECTOR_RELEASE:-otel-collector}"
 CHART_VERSION="${TEMPO_CHART_VERSION:-}"
 OTEL_CHART_VERSION="${OTEL_COLLECTOR_CHART_VERSION:-}"
-VALUES_FILE="${TRACING_VALUES_FILE:-monitoring/gke/tempo-values.yaml}"
-OTEL_VALUES_FILE="${OTEL_COLLECTOR_VALUES_FILE:-monitoring/gke/otel-collector-values.yaml}"
+VALUES_FILE="${TRACING_VALUES_FILE:-ops/observability/monitoring/gke/tempo-values.yaml}"
+OTEL_VALUES_FILE="${OTEL_COLLECTOR_VALUES_FILE:-ops/observability/monitoring/gke/otel-collector-values.yaml}"
 
 helm repo add grafana https://grafana.github.io/helm-charts >/dev/null
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts >/dev/null

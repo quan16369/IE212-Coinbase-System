@@ -333,17 +333,53 @@ services:
     restart: unless-stopped
     logging: *default-logging
 
+  # Local Airflow scheduler/webserver for MLOps orchestration experiments.
+  # Start with COMPOSE_PROFILES=orchestration docker compose --env-file .env up -d airflow.
+  airflow:
+    image: apache/airflow:2.10.5-python3.12
+    container_name: airflow
+    profiles:
+      - orchestration
+    ports:
+      - "${AIRFLOW_PORT:-8089}:8080"
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW_PROJ_DIR: /workspace/Coinbase_Streaming
+      AIRFLOW_FEATURE_PLATFORM_URL: ${AIRFLOW_FEATURE_PLATFORM_URL:-http://feature-platform:8090}
+      AIRFLOW_TRAINING_CSV: ${AIRFLOW_TRAINING_CSV:-/workspace/Coinbase_Streaming/data/BTCUSDT_5m_full.csv}
+      AIRFLOW_PROMOTE_MODEL: ${AIRFLOW_PROMOTE_MODEL:-false}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5000}
+      MLFLOW_EXPERIMENT_NAME: ${MLFLOW_EXPERIMENT_NAME:-coinbase-price-forecasting}
+      MLFLOW_REGISTERED_MODEL_NAME: ${MLFLOW_REGISTERED_MODEL_NAME:-coinbase-price-lightgbm}
+      MLOPS_MODEL_OUTPUT: ${MLOPS_MODEL_OUTPUT:-artifacts/mlops/coinbase_ml_model.joblib}
+    command: >
+      bash -lc "
+        python -m pip install --no-cache-dir -r /workspace/Coinbase_Streaming/mlops/requirements.txt >/tmp/airflow-mlops-pip.log &&
+        airflow standalone
+      "
+    volumes:
+      - airflow-data:/opt/airflow
+      - ./ops/airflow/dags:/opt/airflow/dags:ro
+      - ./:/workspace/Coinbase_Streaming
+    networks:
+      - ie212_pipeline
+    restart: unless-stopped
+    logging: *default-logging
+
   # Grafana for visualization
   grafana:
     build:
-      context: ./grafana
+      context: ./ops/observability/grafana
       dockerfile: ./grafana.Dockerfile
     container_name: grafana
     ports:
       - "${GRAFANA_PORT:-3000}:3000"
     volumes:
-      - ./grafana/config:/etc/grafana/config
-      - ./grafana/dashboards:/etc/grafana/dashboards
+      - ./ops/observability/grafana/config:/etc/grafana/config
+      - ./ops/observability/grafana/dashboards:/etc/grafana/dashboards
       - grafana-data:/var/lib/grafana
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
@@ -372,8 +408,8 @@ services:
       - "--storage.tsdb.path=/prometheus"
       - "--web.enable-lifecycle"
     volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./ops/observability/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/observability/monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
     networks:
       - ie212_pipeline
@@ -395,7 +431,7 @@ services:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
     volumes:
-      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./ops/observability/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
     networks:
       - ie212_pipeline
@@ -408,7 +444,7 @@ services:
     profiles:
       - ops
     volumes:
-      - ./monitoring/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+      - ./ops/observability/monitoring/blackbox/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
     networks:
       - ie212_pipeline
     restart: unless-stopped
@@ -455,7 +491,7 @@ services:
     command:
       - "-config.file=/etc/promtail/config.yml"
     volumes:
-      - ./monitoring/promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - ./ops/observability/monitoring/promtail/promtail.yml:/etc/promtail/config.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
@@ -478,6 +514,7 @@ volumes:
   prometheus-data:
   alertmanager-data:
   loki-data:
+  airflow-data:
 
 networks:
   ie212_pipeline:

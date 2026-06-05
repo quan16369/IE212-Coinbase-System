@@ -12,8 +12,38 @@ service:
 
 store:
   historyLimit: 200
-  online: memory
-  offline: memory
+  online: redis
+  offline: postgres
+  dataVersion: local-dev
+  drift:
+    returnDeltaThreshold: "0.005"
+    volumeDeltaRatioThreshold: "0.25"
+  redis:
+    enabled: true
+    url: redis://feature-platform-redis:6379/0
+    image: redis:7.4-alpine
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+  postgres:
+    enabled: true
+    dsn: postgresql://feature_user:feature_password@feature-platform-postgres:5432/feature_store
+    image: postgres:16-alpine
+    database: feature_store
+    username: feature_user
+    password: feature_password
+    storageSize: 1Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 512Mi
 
 resources:
   requests:

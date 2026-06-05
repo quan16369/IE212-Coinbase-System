@@ -1,4 +1,4 @@
-.PHONY: ci security-check trivy-image-scan image-sbom sonar-up sonar-logs sonar-scan deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate terraform-destroy jenkins-up jenkins-logs mlops-train mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict data-validation-build data-validation-push data-validation-deploy data-validation-delete data-validation-status data-validation-logs data-validation-events data-validation-port-forward data-validation-smoke data-validation-run-telemetry-producer feature-platform-build feature-platform-push feature-platform-deploy feature-platform-delete feature-platform-status feature-platform-logs feature-platform-events feature-platform-port-forward feature-platform-smoke alert-rule-engine-build alert-rule-engine-push alert-rule-engine-deploy alert-rule-engine-delete alert-rule-engine-status alert-rule-engine-logs alert-rule-engine-events alert-rule-engine-port-forward alert-rule-engine-smoke alert-index-build alert-index-push alert-index-deploy alert-index-delete alert-index-status alert-index-logs alert-index-events alert-index-port-forward alert-index-smoke inference-orchestrator-build inference-orchestrator-push inference-orchestrator-deploy inference-orchestrator-ingress inference-orchestrator-delete inference-orchestrator-status inference-orchestrator-ingress-status inference-orchestrator-logs inference-orchestrator-events inference-orchestrator-port-forward inference-orchestrator-smoke inference-orchestrator-public-url inference-orchestrator-smoke-public gke-install-ingress-nginx gke-uninstall-ingress-nginx gke-deploy-bento gke-delete-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-cloud-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-smoke-public-bento gke-run-synthetic-probe-bento gke-port-forward-bento gke-install-monitoring gke-uninstall-monitoring gke-monitoring-status gke-monitoring-grafana gke-monitoring-prometheus gke-monitoring-alertmanager gke-install-logging gke-uninstall-logging gke-logging-status gke-logging-loki gke-install-tracing gke-uninstall-tracing gke-tracing-status gke-tracing-tempo helm-template-bento helm-template-data-validation helm-template-feature-platform helm-template-alert-rule-engine helm-template-alert-index helm-template-inference-orchestrator
+.PHONY: ci security-check trivy-image-scan image-sbom sonar-up sonar-logs sonar-scan deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate terraform-destroy jenkins-up jenkins-logs airflow-up airflow-logs mlops-train mlops-version-manifest mlops-drift-check mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict data-validation-build data-validation-push data-validation-deploy data-validation-delete data-validation-status data-validation-logs data-validation-events data-validation-port-forward data-validation-smoke data-validation-run-telemetry-producer feature-platform-build feature-platform-push feature-platform-deploy feature-platform-delete feature-platform-status feature-platform-logs feature-platform-events feature-platform-port-forward feature-platform-smoke alert-rule-engine-build alert-rule-engine-push alert-rule-engine-deploy alert-rule-engine-delete alert-rule-engine-status alert-rule-engine-logs alert-rule-engine-events alert-rule-engine-port-forward alert-rule-engine-smoke alert-index-build alert-index-push alert-index-deploy alert-index-delete alert-index-status alert-index-logs alert-index-events alert-index-port-forward alert-index-smoke inference-orchestrator-build inference-orchestrator-push inference-orchestrator-deploy inference-orchestrator-ingress inference-orchestrator-delete inference-orchestrator-status inference-orchestrator-ingress-status inference-orchestrator-logs inference-orchestrator-events inference-orchestrator-port-forward inference-orchestrator-smoke inference-orchestrator-public-url inference-orchestrator-smoke-public gke-install-ingress-nginx gke-uninstall-ingress-nginx gke-deploy-bento gke-delete-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-cloud-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-smoke-public-bento gke-smoke-full-stack gke-run-synthetic-probe-bento gke-port-forward-bento gke-install-monitoring gke-uninstall-monitoring gke-monitoring-status gke-monitoring-grafana gke-monitoring-prometheus gke-monitoring-alertmanager gke-install-logging gke-uninstall-logging gke-logging-status gke-logging-loki gke-install-tracing gke-uninstall-tracing gke-tracing-status gke-tracing-tempo helm-template-bento helm-template-data-validation helm-template-feature-platform helm-template-alert-rule-engine helm-template-alert-index helm-template-inference-orchestrator
 
 ci:
 	bash scripts/ci_check.sh
@@ -66,8 +66,20 @@ jenkins-up:
 jenkins-logs:
 	docker compose --env-file .env logs -f --tail=120 jenkins
 
+airflow-up:
+	COMPOSE_PROFILES=orchestration docker compose --env-file .env up -d airflow
+
+airflow-logs:
+	docker compose --env-file .env logs -f --tail=120 airflow
+
 mlops-train:
 	DATA="$(DATA)" bash scripts/train_ml_model.sh
+
+mlops-version-manifest:
+	DATA="$(DATA)" python scripts/create_data_version_manifest.py
+
+mlops-drift-check:
+	python scripts/check_feature_drift.py
 
 mlops-promote-model:
 	MODEL_VERSION="$(MODEL_VERSION)" MODEL_ALIAS="$(MODEL_ALIAS)" python scripts/promote_mlflow_model.py
@@ -310,6 +322,9 @@ gke-smoke-in-cluster-bento:
 
 gke-smoke-public-bento:
 	bash scripts/smoke_bento_public.sh
+
+gke-smoke-full-stack:
+	bash scripts/smoke_gke_full_stack.sh
 
 gke-run-synthetic-probe-bento:
 	kubectl -n app create job --from=cronjob/bento-price-predictor-synthetic-probe bento-price-predictor-synthetic-probe-manual-$$(date +%s)
