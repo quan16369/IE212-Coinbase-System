@@ -1,1 +1,1 @@
-asia-southeast1-docker.pkg.dev/awesome-pilot-494017-u5/coinbase-mlops/coinbase-bento-price-predictor:99f459b
+asia-southeast1-docker.pkg.dev/awesome-pilot-494017-u5/coinbase-mlops/coinbase-bento-price-predictor:c65690e-libgomp

@@ -18,7 +18,7 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get upgrade -y \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends curl libgomp1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

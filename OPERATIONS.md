@@ -1,5 +1,184 @@
 # Operations
 
+## GKE full demo quick start and shutdown
+
+Use this section when the whole GKE demo was deleted yesterday and you want to start from zero again. It creates the Terraform-managed GCP resources, pushes images, deploys the internal services, exposes the inference orchestrator as the public API, and gives the shutdown commands to avoid leaving billable resources running.
+
+### Start From Zero
+
+From the repository root:
+
+```bash
+cd /home/quan/projects/Coinbase_Streaming
+cp -n .env.example .env
+```
+
+Confirm `.env` contains the GCP and Artifact Registry values:
+
+```text
+GCP_PROJECT_ID=awesome-pilot-494017-u5
+GAR_LOCATION=asia-southeast1
+GAR_REPOSITORY=coinbase-mlops
+```
+
+Create or recreate GCP infrastructure:
+
+```bash
+gcloud config set project awesome-pilot-494017-u5
+gcloud auth application-default login
+
+cp -n infra/terraform/terraform.tfvars.example infra/terraform/terraform.tfvars
+terraform -chdir=infra/terraform init
+terraform -chdir=infra/terraform apply
+```
+
+Connect local tools to GKE and Artifact Registry:
+
+```bash
+gcloud container clusters get-credentials coinbase-mlops --region=asia-southeast1
+gcloud auth configure-docker asia-southeast1-docker.pkg.dev
+```
+
+Build and push all demo images with one immutable tag:
+
+```bash
+IMAGE_TAG="$(git rev-parse --short HEAD)"
+
+COMPOSE_PROFILES=mlops docker compose --env-file .env build bento-price-predictor
+IMAGE_TAG="$IMAGE_TAG" make mlops-push-bento
+
+make data-validation-build
+IMAGE_TAG="$IMAGE_TAG" make data-validation-push
+
+make feature-platform-build
+IMAGE_TAG="$IMAGE_TAG" make feature-platform-push
+
+make alert-index-build
+IMAGE_TAG="$IMAGE_TAG" make alert-index-push
+
+make alert-rule-engine-build
+IMAGE_TAG="$IMAGE_TAG" make alert-rule-engine-push
+
+make inference-orchestrator-build
+IMAGE_TAG="$IMAGE_TAG" make inference-orchestrator-push
+```
+
+Deploy the application stack in dependency order:
+
+```bash
+BENTO_NETWORK_POLICY_ENABLED=false make gke-deploy-bento
+
+make feature-platform-deploy
+
+DATA_VALIDATION_FEATURE_PLATFORM_ENABLED=true \
+DATA_VALIDATION_FEATURE_PLATFORM_URL=http://feature-platform.feature-platform.svc.cluster.local \
+make data-validation-deploy
+
+make alert-index-deploy
+
+ALERT_INDEX_URL=http://alert-index.alert-routing.svc.cluster.local \
+make alert-rule-engine-deploy
+
+ALERT_RULE_ENGINE_URL=http://alert-rule-engine.alert-routing.svc.cluster.local \
+make inference-orchestrator-deploy
+```
+
+Expose the product-style public API through nginx ingress:
+
+```bash
+make gke-install-ingress-nginx
+
+ALERT_RULE_ENGINE_URL=http://alert-rule-engine.alert-routing.svc.cluster.local \
+make inference-orchestrator-ingress
+
+make inference-orchestrator-public-url
+```
+
+The public API is:
+
+```text
+POST http://<ingress-ip>/orchestrate/predict
+```
+
+Smoke test the public inference path:
+
+```bash
+conda activate openex-ai
+make inference-orchestrator-smoke-public
+```
+
+Optional observability stack:
+
+```bash
+make gke-install-monitoring
+make gke-install-logging
+make gke-install-tracing
+```
+
+For cost-sensitive demos, install only `gke-install-monitoring` unless you need Loki logs or Tempo traces in the UI.
+
+### Check Current State
+
+```bash
+kubectl get ns
+make gke-status-bento
+make data-validation-status
+make feature-platform-status
+make alert-index-status
+make alert-rule-engine-status
+make inference-orchestrator-status
+make inference-orchestrator-ingress-status
+make gke-monitoring-status
+```
+
+### Shutdown To Avoid Cost
+
+Run this when the demo is done. The important cost items are the GKE Autopilot cluster, public LoadBalancer from nginx ingress, optional direct LoadBalancer for Bento, and Artifact Registry image storage. Destroying Terraform-managed infrastructure removes the GKE cluster and Artifact Registry repository.
+
+First remove public endpoints and optional observability:
+
+```bash
+cd /home/quan/projects/Coinbase_Streaming
+
+make gke-uninstall-ingress-nginx
+make gke-unexpose-bento
+
+make gke-uninstall-monitoring
+make gke-uninstall-logging
+make gke-uninstall-tracing
+```
+
+Then remove application workloads while the cluster still exists:
+
+```bash
+make inference-orchestrator-delete
+make alert-rule-engine-delete
+make alert-index-delete
+make data-validation-delete
+make feature-platform-delete
+make gke-delete-bento
+```
+
+Finally destroy Terraform-managed GCP resources:
+
+```bash
+terraform -chdir=infra/terraform plan
+terraform -chdir=infra/terraform destroy
+```
+
+If you only want to stop local Docker Compose services:
+
+```bash
+docker compose --env-file .env down
+```
+
+After `terraform destroy`, verify there is no cluster and no Artifact Registry repository left:
+
+```bash
+gcloud container clusters list --region=asia-southeast1
+gcloud artifacts repositories list --location=asia-southeast1
+```
+
 ## Local or single-host deployment
 
 Create a local env file before starting services:
