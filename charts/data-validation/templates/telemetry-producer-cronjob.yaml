@@ -47,39 +47,60 @@ spec:
                   FEATURE_PLATFORM_URL="{{ .Values.telemetryProducer.featurePlatform.url }}"
                   cat >/tmp/payload.json <<'JSON'
                   {
-                    "records": [
+                    "events": [
                       {
+                        "event_id": "telemetry-valid-2024-01-01T00:00:00Z",
+                        "schema_version": "1.0",
+                        "event_type": "coinbase.candle",
                         "timestamp": "2024-01-01T00:00:00Z",
-                        "symbol": "BTCUSDT",
-                        "open": 42000.0,
-                        "high": 42100.0,
-                        "low": 41900.0,
-                        "close": 42050.0,
-                        "volume": 12.5
+                        "source": "telemetry-cronjob",
+                        "payload": {
+                          "timestamp": "2024-01-01T00:00:00Z",
+                          "symbol": "BTCUSDT",
+                          "open": 42000.0,
+                          "high": 42100.0,
+                          "low": 41900.0,
+                          "close": 42050.0,
+                          "volume": 12.5
+                        }
                       },
                       {
+                        "event_id": "telemetry-invalid-2024-01-01T00:05:00Z",
+                        "schema_version": "1.0",
+                        "event_type": "coinbase.candle",
                         "timestamp": "2024-01-01T00:05:00Z",
-                        "symbol": "BTCUSDT",
-                        "open": 42050.0,
-                        "high": 42020.0,
-                        "low": 42000.0,
-                        "close": 42150.0,
-                        "volume": 8.0
+                        "source": "telemetry-cronjob",
+                        "payload": {
+                          "timestamp": "2024-01-01T00:05:00Z",
+                          "symbol": "BTCUSDT",
+                          "open": 42050.0,
+                          "high": 42020.0,
+                          "low": 42000.0,
+                          "close": 42150.0,
+                          "volume": 8.0
+                        }
                       }
                     ]
                   }
                   JSON
                   cat >/tmp/feature-payload.json <<'JSON'
                   {
-                    "records": [
+                    "events": [
                       {
+                        "event_id": "telemetry-valid-2024-01-01T00:00:00Z",
+                        "schema_version": "1.0",
+                        "event_type": "coinbase.candle",
                         "timestamp": "2024-01-01T00:00:00Z",
-                        "symbol": "BTCUSDT",
-                        "open": 42000.0,
-                        "high": 42100.0,
-                        "low": 41900.0,
-                        "close": 42050.0,
-                        "volume": 12.5
+                        "source": "telemetry-cronjob",
+                        "payload": {
+                          "timestamp": "2024-01-01T00:00:00Z",
+                          "symbol": "BTCUSDT",
+                          "open": 42000.0,
+                          "high": 42100.0,
+                          "low": 41900.0,
+                          "close": 42050.0,
+                          "volume": 12.5
+                        }
                       }
                     ]
                   }

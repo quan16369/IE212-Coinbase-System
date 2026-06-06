@@ -28,15 +28,22 @@ def main() -> int:
     payload = {
         "source": "smoke-test",
         "data_version": "smoke-2026-01-01",
-        "records": [
+        "events": [
             {
+                "event_id": f"feature-smoke-{index}",
+                "schema_version": "1.0",
+                "event_type": "coinbase.candle",
                 "timestamp": (start + timedelta(minutes=5 * index)).isoformat(),
-                "symbol": "BTCUSDT",
-                "open": 93000 + index * 10,
-                "high": 93100 + index * 10,
-                "low": 92900 + index * 10,
-                "close": 93050 + index * 12,
-                "volume": 100 + index,
+                "source": "smoke-test",
+                "payload": {
+                    "timestamp": (start + timedelta(minutes=5 * index)).isoformat(),
+                    "symbol": "BTCUSDT",
+                    "open": 93000 + index * 10,
+                    "high": 93100 + index * 10,
+                    "low": 92900 + index * 10,
+                    "close": 93050 + index * 12,
+                    "volume": 100 + index,
+                },
             }
             for index in range(36)
         ]
@@ -45,6 +52,7 @@ def main() -> int:
     try:
         status = request("GET", "/store/status")
         ingest = request("POST", "/features/ingest", payload)
+        duplicate_ingest = request("POST", "/features/ingest", payload)
         latest = request("GET", "/features/latest/BTCUSDT")
         history = request("GET", "/features/history/BTCUSDT?limit=5")
         retraining = request("GET", "/feedback/retraining-signal/BTCUSDT")
@@ -61,12 +69,16 @@ def main() -> int:
     if ingest["data_version"] != "smoke-2026-01-01":
         print(f"Unexpected data version: {ingest['data_version']}", file=sys.stderr)
         return 1
+    if duplicate_ingest["accepted_count"] != 0 or duplicate_ingest["duplicate_count"] != 36:
+        print("Expected repeated event IDs to be idempotent.", file=sys.stderr)
+        return 1
 
     print(
         json.dumps(
             {
                 "status": status,
                 "ingest": ingest,
+                "duplicate_ingest": duplicate_ingest,
                 "latest": latest,
                 "history_tail": history,
                 "retraining_signal": retraining,

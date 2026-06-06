@@ -21,8 +21,14 @@ def post_json(url: str, payload: dict) -> dict:
 def main() -> int:
     url = os.environ.get("DATA_VALIDATION_URL", "http://localhost:8089/validate")
     valid_payload = {
-        "records": [
+        "events": [
             {
+                "event_id": "validation-smoke-valid-1",
+                "schema_version": "1.0",
+                "event_type": "coinbase.candle",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "source": "smoke-test",
+                "payload": {
                 "timestamp": "2024-01-01T00:00:00Z",
                 "symbol": "BTCUSDT",
                 "open": 42000.0,
@@ -30,8 +36,15 @@ def main() -> int:
                 "low": 41900.0,
                 "close": 42050.0,
                 "volume": 12.5,
+                },
             },
             {
+                "event_id": "validation-smoke-valid-2",
+                "schema_version": "1.0",
+                "event_type": "coinbase.candle",
+                "timestamp": "2024-01-01T00:05:00Z",
+                "source": "smoke-test",
+                "payload": {
                 "timestamp": "2024-01-01T00:05:00Z",
                 "symbol": "BTCUSDT",
                 "open": 42050.0,
@@ -39,13 +52,27 @@ def main() -> int:
                 "low": 42000.0,
                 "close": 42150.0,
                 "volume": 8.0,
+                },
             },
         ]
     }
     mixed_payload = {
-        "records": [
-            valid_payload["records"][0],
+        "events": [
             {
+                "event_id": "validation-smoke-mixed-valid",
+                "schema_version": "1.0",
+                "event_type": "coinbase.candle",
+                "timestamp": "2024-01-01T00:00:00Z",
+                "source": "smoke-test",
+                "payload": valid_payload["events"][0]["payload"],
+            },
+            {
+                "event_id": "validation-smoke-mixed-invalid",
+                "schema_version": "1.0",
+                "event_type": "coinbase.candle",
+                "timestamp": "2024-01-01T00:05:00Z",
+                "source": "smoke-test",
+                "payload": {
                 "timestamp": "2024-01-01T00:05:00Z",
                 "symbol": "BTCUSDT",
                 "open": 42050.0,
@@ -53,12 +80,14 @@ def main() -> int:
                 "low": 42000.0,
                 "close": 42150.0,
                 "volume": 8.0,
+                },
             },
         ]
     }
 
     try:
         valid_result = post_json(url, valid_payload)
+        duplicate_result = post_json(url, valid_payload)
         mixed_result = post_json(url, mixed_payload)
     except urllib.error.URLError as exc:
         print(f"Could not reach data validation service at {url}: {exc}", file=sys.stderr)
@@ -68,6 +97,9 @@ def main() -> int:
     print(json.dumps(valid_result, indent=2))
     if not valid_result.get("valid"):
         print("Expected validation smoke payload to be valid.", file=sys.stderr)
+        return 1
+    if duplicate_result.get("duplicate_count") != 2 or duplicate_result.get("accepted_count") != 0:
+        print("Expected repeated event IDs to be treated as duplicates.", file=sys.stderr)
         return 1
 
     print("Mixed payload result:")

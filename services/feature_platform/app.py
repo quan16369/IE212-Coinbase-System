@@ -7,29 +7,22 @@ import json
 import math
 import os
 import time
+from threading import Lock
 from typing import Any, Deque, Protocol
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
+
+from contracts.events import CandleEvent, CandlePayload, EVENT_TYPE_CANDLE, SCHEMA_VERSION
 
 
-class Candle(BaseModel):
-    timestamp: datetime
-    symbol: str = Field(min_length=1)
-    open: float = Field(gt=0)
-    high: float = Field(gt=0)
-    low: float = Field(gt=0)
-    close: float = Field(gt=0)
-    volume: float = Field(ge=0)
-
-    @field_validator("symbol")
-    @classmethod
-    def normalize_symbol(cls, value: str) -> str:
-        return value.strip().upper()
+Candle = CandlePayload
 
 
 class FeatureRecord(BaseModel):
+    event_id: str | None = None
+    schema_version: str = SCHEMA_VERSION
     timestamp: datetime
     symbol: str
     open: float
@@ -48,13 +41,23 @@ class FeatureRecord(BaseModel):
 
 
 class IngestRequest(BaseModel):
-    records: list[Candle] = Field(min_length=1)
+    events: list[CandleEvent] = Field(default_factory=list)
+    records: list[Candle] = Field(default_factory=list)
     source: str = "telemetry"
     data_version: str | None = None
+
+    @model_validator(mode="after")
+    def require_input(self) -> "IngestRequest":
+        if not self.events and not self.records:
+            raise ValueError("events or records must contain at least one item")
+        return self
 
 
 class IngestResponse(BaseModel):
     accepted_count: int
+    duplicate_count: int
+    accepted_event_ids: list[str]
+    duplicate_event_ids: list[str]
     symbols: list[str]
     online_store: str
     offline_store: str
@@ -106,6 +109,9 @@ class FeatureStore(Protocol):
         ...
 
     def save_feature(self, batch_id: str, record: FeatureRecord) -> None:
+        ...
+
+    def claim_event(self, event_id: str, schema_version: str, event_timestamp: datetime) -> bool:
         ...
 
     def latest(self, symbol: str) -> FeatureRecord | None:
@@ -167,19 +173,40 @@ def ingest(payload: IngestRequest) -> IngestResponse:
     data_version = payload.data_version or DEFAULT_DATA_VERSION
     batch_id = str(uuid4())
     payload_hash = _payload_hash(payload)
+    events = payload.events or [
+        CandleEvent(
+            event_id=f"legacy:{record.symbol}:{record.timestamp.isoformat()}",
+            schema_version=SCHEMA_VERSION,
+            event_type=EVENT_TYPE_CANDLE,
+            timestamp=record.timestamp,
+            source=payload.source,
+            payload=record,
+        )
+        for record in payload.records
+    ]
+    accepted_event_ids: list[str] = []
+    duplicate_event_ids: list[str] = []
 
     store.save_batch(batch_id, payload_hash, payload.source, data_version)
 
-    for record in sorted(payload.records, key=lambda item: item.timestamp):
+    for event in sorted(events, key=lambda item: item.timestamp):
+        if not store.claim_event(event.event_id, event.schema_version, event.timestamp):
+            duplicate_event_ids.append(event.event_id)
+            continue
+        record = event.payload
         history = _history_candles(record.symbol)
         previous = history[-1] if history else None
-        feature = _build_feature(record, history, previous)
+        feature = _build_feature(record, history, previous, event.event_id, event.schema_version)
 
         store.save_feature(batch_id, feature)
         latest[record.symbol] = feature
+        accepted_event_ids.append(event.event_id)
 
     return IngestResponse(
-        accepted_count=len(payload.records),
+        accepted_count=len(accepted_event_ids),
+        duplicate_count=len(duplicate_event_ids),
+        accepted_event_ids=accepted_event_ids,
+        duplicate_event_ids=duplicate_event_ids,
         symbols=sorted(latest),
         online_store=store.online_name,
         offline_store=store.offline_name,
@@ -299,6 +326,8 @@ class MemoryFeatureStore:
     def __init__(self) -> None:
         self.features: dict[str, Deque[FeatureRecord]] = defaultdict(lambda: deque(maxlen=MAX_HISTORY))
         self.batches: dict[str, dict[str, Any]] = {}
+        self.processed_event_ids: set[str] = set()
+        self.event_lock = Lock()
 
     def save_batch(self, batch_id: str, payload_hash: str, source: str, data_version: str) -> None:
         self.batches[batch_id] = {
@@ -310,6 +339,14 @@ class MemoryFeatureStore:
 
     def save_feature(self, batch_id: str, record: FeatureRecord) -> None:
         self.features[record.symbol].append(record)
+
+    def claim_event(self, event_id: str, schema_version: str, event_timestamp: datetime) -> bool:
+        del schema_version, event_timestamp
+        with self.event_lock:
+            if event_id in self.processed_event_ids:
+                return False
+            self.processed_event_ids.add(event_id)
+            return True
 
     def latest(self, symbol: str) -> FeatureRecord | None:
         if not self.features[symbol]:
@@ -349,6 +386,16 @@ class RedisPostgresFeatureStore:
                   source TEXT NOT NULL,
                   data_version TEXT NOT NULL,
                   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS processed_feature_events (
+                  event_id TEXT PRIMARY KEY,
+                  schema_version TEXT NOT NULL,
+                  event_timestamp TIMESTAMPTZ NOT NULL,
+                  processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
                 )
                 """
             )
@@ -395,6 +442,19 @@ class RedisPostgresFeatureStore:
                 (batch_id, record.timestamp, record.symbol, json.dumps(payload)),
             )
         self.redis.set(_latest_key(record.symbol), json.dumps(payload))
+
+    def claim_event(self, event_id: str, schema_version: str, event_timestamp: datetime) -> bool:
+        with self.pg.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO processed_feature_events (event_id, schema_version, event_timestamp)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (event_id) DO NOTHING
+                RETURNING event_id
+                """,
+                (event_id, schema_version, event_timestamp),
+            )
+            return cursor.fetchone() is not None
 
     def latest(self, symbol: str) -> FeatureRecord | None:
         raw = self.redis.get(_latest_key(symbol))
@@ -468,7 +528,13 @@ def _history_candles(symbol: str) -> list[Candle]:
     ]
 
 
-def _build_feature(record: Candle, history: list[Candle], previous: Candle | None) -> FeatureRecord:
+def _build_feature(
+    record: Candle,
+    history: list[Candle],
+    previous: Candle | None,
+    event_id: str,
+    schema_version: str,
+) -> FeatureRecord:
     if previous is None:
         returns = 0.0
         volume_change = 0.0
@@ -479,6 +545,8 @@ def _build_feature(record: Candle, history: list[Candle], previous: Candle | Non
     closes = [item.close for item in history] + [record.close]
 
     return FeatureRecord(
+        event_id=event_id,
+        schema_version=schema_version,
         timestamp=record.timestamp,
         symbol=record.symbol,
         open=record.open,

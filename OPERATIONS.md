@@ -53,12 +53,6 @@ IMAGE_TAG="$IMAGE_TAG" make data-validation-push
 make feature-platform-build
 IMAGE_TAG="$IMAGE_TAG" make feature-platform-push
 
-make alert-index-build
-IMAGE_TAG="$IMAGE_TAG" make alert-index-push
-
-make alert-rule-engine-build
-IMAGE_TAG="$IMAGE_TAG" make alert-rule-engine-push
-
 make inference-orchestrator-build
 IMAGE_TAG="$IMAGE_TAG" make inference-orchestrator-push
 ```
@@ -79,12 +73,6 @@ DATA_VALIDATION_FEATURE_PLATFORM_ENABLED=true \
 DATA_VALIDATION_FEATURE_PLATFORM_URL=http://feature-platform.feature-platform.svc.cluster.local \
 make data-validation-deploy
 
-make alert-index-deploy
-
-ALERT_INDEX_URL=http://alert-index.alert-routing.svc.cluster.local \
-make alert-rule-engine-deploy
-
-ALERT_RULE_ENGINE_URL=http://alert-rule-engine.alert-routing.svc.cluster.local \
 make inference-orchestrator-deploy
 ```
 
@@ -93,7 +81,6 @@ Expose the product-style public API through nginx ingress:
 ```bash
 make gke-install-ingress-nginx
 
-ALERT_RULE_ENGINE_URL=http://alert-rule-engine.alert-routing.svc.cluster.local \
 make inference-orchestrator-ingress
 
 make inference-orchestrator-public-url
@@ -264,8 +251,6 @@ Service health:
 make gke-status-bento
 make feature-platform-status
 make data-validation-status
-make alert-index-status
-make alert-rule-engine-status
 make inference-orchestrator-status
 ```
 
@@ -274,8 +259,6 @@ Logs:
 ```bash
 make gke-logs-bento
 make inference-orchestrator-logs
-make alert-rule-engine-logs
-make alert-index-logs
 ```
 
 Monitoring:
@@ -298,7 +281,6 @@ Useful Loki query examples:
 ```text
 {namespace="app", app="bento-price-predictor"}
 {namespace="model-serving", app="inference-orchestrator"}
-{namespace="alert-routing", app="alert-rule-engine"}
 ```
 
 Useful Prometheus checks:
@@ -364,8 +346,6 @@ kubectl get ns
 make gke-status-bento
 make data-validation-status
 make feature-platform-status
-make alert-index-status
-make alert-rule-engine-status
 make inference-orchestrator-status
 make inference-orchestrator-ingress-status
 make gke-monitoring-status
@@ -392,8 +372,6 @@ Then remove application workloads while the cluster still exists:
 
 ```bash
 make inference-orchestrator-delete
-make alert-rule-engine-delete
-make alert-index-delete
 make data-validation-delete
 make feature-platform-delete
 make gke-delete-bento
@@ -1271,121 +1249,42 @@ GET /features/history/{symbol}
 
 The current feature set includes return, log return, volume change, high/low spread, open/close spread, and rolling close means for windows 3, 6, and 12.
 
+Kafka candle events use the shared versioned envelope from
+`contracts/events.py`:
+
+```text
+event_id, schema_version, event_type, timestamp, source, payload
+```
+
+`event_id` is the idempotency key. Feature-platform stores processed IDs in
+PostgreSQL and ignores retries. Data validation uses a bounded memory cache for
+one-replica demos. For multiple validation replicas, use the existing
+feature-platform Redis as the shared idempotency backend:
+
+```bash
+VALIDATION_IDEMPOTENCY_REDIS_URL=redis://feature-platform-redis.feature-platform.svc.cluster.local:6379/0 \
+make data-validation-deploy
+```
+
 To remove only this feature service:
 
 ```bash
 make feature-platform-delete
 ```
 
-### Alert rule engine service
-
-The `alert-routing` namespace contains a small `alert-rule-engine` API. It evaluates prediction results and creates alerts when the absolute predicted return crosses a threshold. It keeps a short in-memory history and can also forward created alerts to the alert index service.
-
-Build and push the image:
-
-```bash
-make alert-rule-engine-build
-IMAGE_TAG="$(git rev-parse --short HEAD)" make alert-rule-engine-push
-```
-
-Deploy to GKE:
-
-```bash
-make alert-rule-engine-deploy
-```
-
-To forward triggered alerts into the alert index, deploy with:
-
-```bash
-ALERT_INDEX_URL=http://alert-index.alert-routing.svc.cluster.local \
-make alert-rule-engine-deploy
-```
-
-Check status:
-
-```bash
-make alert-rule-engine-status
-```
-
-Smoke test locally:
-
-```bash
-make alert-rule-engine-port-forward
-```
-
-From another terminal:
-
-```bash
-ALERT_RULE_ENGINE_URL=http://localhost:8092 make alert-rule-engine-smoke
-```
-
-The main endpoints are:
-
-```text
-GET /config
-POST /alerts/evaluate
-GET /alerts
-```
-
-To remove only this alert service:
-
-```bash
-make alert-rule-engine-delete
-```
-
-### Alert index service
-
-The `alert-index` service stores triggered alerts so the demo has a separate alert history component like the diagram's alert index. This first version writes JSONL to an `emptyDir` volume inside the pod. That is enough for a resettable demo; replace it with PostgreSQL when alerts need to survive pod deletion.
-
-Build and push the image:
-
-```bash
-make alert-index-build
-IMAGE_TAG="$(git rev-parse --short HEAD)" make alert-index-push
-```
-
-Deploy to GKE:
-
-```bash
-make alert-index-deploy
-```
-
-Check status:
-
-```bash
-make alert-index-status
-```
-
-Smoke test locally:
-
-```bash
-make alert-index-port-forward
-```
-
-From another terminal:
-
-```bash
-ALERT_INDEX_URL=http://localhost:8093 make alert-index-smoke
-```
-
-The main endpoints are:
-
-```text
-GET /config
-POST /alerts
-GET /alerts
-GET /alerts/{alert_id}
-```
-
-To remove only this alert index:
-
-```bash
-make alert-index-delete
-```
-
 ### Inference orchestrator service
 
-The `model-serving` namespace contains a small `inference-orchestrator` API. It receives recent candle history, calls BentoML for prediction, and attaches the latest feature context from the feature platform. This matches the diagram's inference orchestration layer without adding a database or queue yet.
+The `model-serving` namespace contains the `inference-orchestrator` API. It receives recent candle history, calls BentoML for prediction, attaches feature context, evaluates the alert rule, and persists alert history. These responsibilities share one request lifecycle and are intentionally deployed as one service.
+
+The default alert history uses JSONL on a 1 Gi PVC and requires one orchestrator
+replica. Move alert history to PostgreSQL before enabling HPA or multiple
+orchestrator replicas.
+
+Every successful prediction also persists governance decision telemetry with
+the decision, model identity, latency, available drift evidence, and
+operational health. The JSONL records form a tamper-evident hash chain. For a
+regulated production system, move this audit trail to immutable external
+storage before enabling multiple replicas.
 
 Build and push the image:
 
@@ -1400,17 +1299,9 @@ Deploy to GKE:
 make inference-orchestrator-deploy
 ```
 
-To forward predictions to the alert rule engine, deploy with:
-
-```bash
-ALERT_RULE_ENGINE_URL=http://alert-rule-engine.alert-routing.svc.cluster.local \
-make inference-orchestrator-deploy
-```
-
 Expose the orchestrator as the public prediction API through nginx ingress:
 
 ```bash
-ALERT_RULE_ENGINE_URL=http://alert-rule-engine.alert-routing.svc.cluster.local \
 make inference-orchestrator-ingress
 ```
 
@@ -1432,14 +1323,13 @@ Smoke test the public API:
 make inference-orchestrator-smoke-public
 ```
 
-BentoML should stay internal in this flow. External clients call the orchestrator, and the orchestrator calls BentoML, feature-platform, alert-rule-engine, and alert-index inside the cluster.
+BentoML should stay internal in this flow. External clients call the orchestrator, and the orchestrator calls BentoML and feature-platform inside the cluster. Alert evaluation and history are handled internally.
 
 By default it calls these in-cluster services:
 
 ```text
 http://bento-price-predictor.app.svc.cluster.local/predict
 http://feature-platform.feature-platform.svc.cluster.local
-http://alert-rule-engine.alert-routing.svc.cluster.local
 ```
 
 Check status:
@@ -1467,6 +1357,11 @@ The main endpoints are:
 GET /config
 POST /orchestrate/predict
 GET /orchestrate/latest/{symbol}
+GET /alerts
+GET /alerts/{alert_id}
+GET /governance/decisions
+GET /governance/decisions/{decision_id}
+GET /governance/integrity
 ```
 
 To remove only this inference service:

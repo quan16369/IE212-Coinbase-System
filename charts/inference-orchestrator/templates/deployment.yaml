@@ -28,8 +28,19 @@ spec:
               value: {{ .Values.bento.predictUrl | quote }}
             - name: FEATURE_PLATFORM_URL
               value: {{ .Values.featurePlatform.url | quote }}
-            - name: ALERT_RULE_ENGINE_URL
-              value: {{ .Values.alertRuleEngine.url | quote }}
+            - name: ALERT_RETURN_THRESHOLD
+              value: {{ .Values.alerts.returnThreshold | quote }}
+            - name: ALERT_HISTORY_LIMIT
+              value: {{ .Values.alerts.historyLimit | quote }}
+            - name: ALERT_INDEX_PATH
+              value: {{ .Values.alerts.indexPath | quote }}
+            - name: GOVERNANCE_HISTORY_LIMIT
+              value: {{ .Values.governance.historyLimit | quote }}
+            - name: GOVERNANCE_INDEX_PATH
+              value: {{ .Values.governance.indexPath | quote }}
+          volumeMounts:
+            - name: alert-data
+              mountPath: /data
           readinessProbe:
             httpGet:
               path: /readyz
@@ -48,3 +59,11 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: alert-data
+          {{- if .Values.alerts.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "inference-orchestrator.fullname" . }}-alerts
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

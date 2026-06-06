@@ -1,0 +1,15 @@
+{{- if .Values.alerts.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "inference-orchestrator.fullname" . }}-alerts
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "inference-orchestrator.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.alerts.persistence.size }}
+{{- end }}

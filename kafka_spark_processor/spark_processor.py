@@ -122,14 +122,24 @@ ticker_schema = StructType([
 
 # Define schema for candle data
 candle_schema = StructType([
-    StructField("start", StringType(), True),
-    StructField("high", StringType(), True),
-    StructField("low", StringType(), True),
-    StructField("open", StringType(), True),
-    StructField("close", StringType(), True),
-    StructField("volume", StringType(), True),
-    StructField("product_id", StringType(), True)
+    StructField("timestamp", StringType(), True),
+    StructField("symbol", StringType(), True),
+    StructField("high", DoubleType(), True),
+    StructField("low", DoubleType(), True),
+    StructField("open", DoubleType(), True),
+    StructField("close", DoubleType(), True),
+    StructField("volume", DoubleType(), True)
 ])
+
+def event_schema(payload_schema):
+    return StructType([
+        StructField("event_id", StringType(), False),
+        StructField("schema_version", StringType(), False),
+        StructField("event_type", StringType(), False),
+        StructField("timestamp", StringType(), False),
+        StructField("source", StringType(), False),
+        StructField("payload", payload_schema, False),
+    ])
 
 # Function to process ticker data
 def process_ticker_data():
@@ -144,8 +154,8 @@ def process_ticker_data():
     
     # Parse JSON
     parsed_ticker_df = ticker_df.select(
-        from_json(col("value").cast("string"), ticker_schema).alias("ticker")
-    ).select("ticker.*")
+        from_json(col("value").cast("string"), event_schema(ticker_schema)).alias("event")
+    ).select("event.payload.*")
     
     # Process ticker data
     processed_ticker_df = parsed_ticker_df.select(
@@ -182,21 +192,18 @@ def process_candle_data():
     
     # Parse JSON
     parsed_candle_df = candle_df.select(
-        from_json(col("value").cast("string"), candle_schema).alias("candle")
-    ).select("candle.*")
+        from_json(col("value").cast("string"), event_schema(candle_schema)).alias("event")
+    ).select("event.payload.*")
     
     # Process candle data
     processed_candle_df = parsed_candle_df.select(
-        col("product_id"),
-        # Convert start timestamp (Unix timestamp in seconds)
-        when(col("start").cast("long").isNotNull(), 
-             to_timestamp(col("start").cast("long"))).otherwise(
-             to_timestamp(col("start"))).alias("start_time"),  
-        col("open").cast("double").alias("open"),
-        col("high").cast("double").alias("high"),
-        col("low").cast("double").alias("low"),
-        col("close").cast("double").alias("close"),
-        col("volume").cast("double").alias("volume")
+        col("symbol").alias("product_id"),
+        to_timestamp(col("timestamp")).alias("start_time"),
+        col("open"),
+        col("high"),
+        col("low"),
+        col("close"),
+        col("volume")
     )
     
     # Write to Cassandra

@@ -57,6 +57,16 @@ def main() -> None:
     base_url = args.url.rstrip("/")
     records = build_records(args.symbol.upper())
     result = request_json(f"{base_url}/orchestrate/predict", "POST", {"records": records})
+    alerts = request_json(f"{base_url}/alerts")
+    decisions = request_json(f"{base_url}/governance/decisions")
+    integrity = request_json(f"{base_url}/governance/integrity")
+    if not result.get("decision_id") or not decisions.get("count"):
+        raise RuntimeError("Governance decision telemetry was not persisted.")
+    if not integrity.get("valid"):
+        raise RuntimeError(f"Governance decision hash chain is invalid: {integrity}")
+    result["alert_history"] = alerts
+    result["governance_history"] = decisions
+    result["governance_integrity"] = integrity
     print(json.dumps(result, indent=2))
 
 

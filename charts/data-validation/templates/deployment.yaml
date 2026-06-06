@@ -36,6 +36,12 @@ spec:
               value: {{ .Values.routing.validatedTarget | quote }}
             - name: QUALITY_TARGET
               value: {{ .Values.routing.qualityTarget | quote }}
+            - name: VALIDATION_IDEMPOTENCY_CACHE_SIZE
+              value: {{ .Values.idempotency.cacheSize | quote }}
+            - name: VALIDATION_IDEMPOTENCY_REDIS_URL
+              value: {{ .Values.idempotency.redisUrl | quote }}
+            - name: VALIDATION_IDEMPOTENCY_TTL_SECONDS
+              value: {{ .Values.idempotency.ttlSeconds | quote }}
           readinessProbe:
             httpGet:
               path: /readyz

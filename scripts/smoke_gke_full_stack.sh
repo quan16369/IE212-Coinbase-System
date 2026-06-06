@@ -18,8 +18,6 @@ echo "Checking Kubernetes rollout status"
 kubectl -n app rollout status deployment/bento-price-predictor --timeout=180s
 kubectl -n feature-platform rollout status deployment/feature-platform --timeout=180s
 kubectl -n data-ingestion rollout status deployment/data-validation --timeout=180s
-kubectl -n alert-routing rollout status deployment/alert-index --timeout=180s
-kubectl -n alert-routing rollout status deployment/alert-rule-engine --timeout=180s
 kubectl -n model-serving rollout status deployment/inference-orchestrator --timeout=180s
 
 echo

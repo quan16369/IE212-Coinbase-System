@@ -28,20 +28,17 @@ if [[ -n "$PYTHON_BIN" ]]; then
   echo "Checking Python syntax"
   "$PYTHON_BIN" -c "import ast, pathlib; files = [
     'coinbase_kafka_producer/producer.py',
+    'contracts/events.py',
     'kafka_spark_processor/spark_processor.py',
     'mlops/features.py',
     'mlops/service.py',
     'mlops/train.py',
     'services/data_validation/app.py',
     'services/feature_platform/app.py',
-    'services/alert_rule_engine/app.py',
-    'services/alert_index/app.py',
     'services/inference_orchestrator/app.py',
     'scripts/promote_mlflow_model.py',
     'scripts/smoke_feature_platform.py',
     'scripts/smoke_data_validation.py',
-    'scripts/smoke_alert_rule_engine.py',
-    'scripts/smoke_alert_index.py',
     'scripts/smoke_inference_orchestrator.py',
     'scripts/test_bento_predict.py',
 ]; [ast.parse(pathlib.Path(path).read_text(), filename=path) for path in files]"
@@ -63,8 +60,6 @@ if command -v helm >/dev/null 2>&1; then
   helm lint charts/bento-price-predictor
   helm lint charts/data-validation
   helm lint charts/feature-platform
-  helm lint charts/alert-rule-engine
-  helm lint charts/alert-index
   helm lint charts/inference-orchestrator
 else
   echo "helm not found; skipping Helm chart lint"

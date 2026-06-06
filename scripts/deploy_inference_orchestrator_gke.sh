@@ -9,7 +9,11 @@ HELM_CHART="${INFERENCE_ORCHESTRATOR_HELM_CHART:-charts/inference-orchestrator}"
 REPLICA_COUNT="${INFERENCE_ORCHESTRATOR_REPLICA_COUNT:-}"
 BENTO_PREDICT_URL="${BENTO_PREDICT_URL:-}"
 FEATURE_PLATFORM_URL="${FEATURE_PLATFORM_URL:-}"
-ALERT_RULE_ENGINE_URL="${ALERT_RULE_ENGINE_URL:-}"
+ALERT_RETURN_THRESHOLD="${ALERT_RETURN_THRESHOLD:-}"
+ALERT_HISTORY_LIMIT="${ALERT_HISTORY_LIMIT:-}"
+ALERT_PERSISTENCE_ENABLED="${ALERT_PERSISTENCE_ENABLED:-}"
+GOVERNANCE_HISTORY_LIMIT="${GOVERNANCE_HISTORY_LIMIT:-}"
+GOVERNANCE_INDEX_PATH="${GOVERNANCE_INDEX_PATH:-}"
 INGRESS_ENABLED="${INFERENCE_ORCHESTRATOR_INGRESS_ENABLED:-}"
 INGRESS_CLASS="${INFERENCE_ORCHESTRATOR_INGRESS_CLASS:-}"
 INGRESS_HOST="${INFERENCE_ORCHESTRATOR_INGRESS_HOST:-}"
@@ -61,8 +65,24 @@ if [[ -n "$FEATURE_PLATFORM_URL" ]]; then
   HELM_ARGS+=(--set featurePlatform.url="$FEATURE_PLATFORM_URL")
 fi
 
-if [[ -n "$ALERT_RULE_ENGINE_URL" ]]; then
-  HELM_ARGS+=(--set alertRuleEngine.url="$ALERT_RULE_ENGINE_URL")
+if [[ -n "$ALERT_RETURN_THRESHOLD" ]]; then
+  HELM_ARGS+=(--set alerts.returnThreshold="$ALERT_RETURN_THRESHOLD")
+fi
+
+if [[ -n "$ALERT_HISTORY_LIMIT" ]]; then
+  HELM_ARGS+=(--set alerts.historyLimit="$ALERT_HISTORY_LIMIT")
+fi
+
+if [[ -n "$ALERT_PERSISTENCE_ENABLED" ]]; then
+  HELM_ARGS+=(--set alerts.persistence.enabled="$ALERT_PERSISTENCE_ENABLED")
+fi
+
+if [[ -n "$GOVERNANCE_HISTORY_LIMIT" ]]; then
+  HELM_ARGS+=(--set governance.historyLimit="$GOVERNANCE_HISTORY_LIMIT")
+fi
+
+if [[ -n "$GOVERNANCE_INDEX_PATH" ]]; then
+  HELM_ARGS+=(--set governance.indexPath="$GOVERNANCE_INDEX_PATH")
 fi
 
 if [[ -n "$INGRESS_ENABLED" ]]; then
@@ -88,7 +108,9 @@ echo "Deployed inference orchestrator image: $IMAGE_URI"
 echo "Namespace: $NAMESPACE"
 echo "Bento predict URL: ${BENTO_PREDICT_URL:-chart default}"
 echo "Feature platform URL: ${FEATURE_PLATFORM_URL:-chart default}"
-echo "Alert rule engine URL: ${ALERT_RULE_ENGINE_URL:-disabled}"
+echo "Alert evaluation: internal"
+echo "Alert persistence: ${ALERT_PERSISTENCE_ENABLED:-chart default}"
+echo "Governance decision telemetry: enabled"
 echo "Ingress enabled: ${INGRESS_ENABLED:-chart default}"
 echo "Ingress path: ${INGRESS_PATH:-chart default}"
 echo "Test locally with:"

@@ -23,8 +23,19 @@ bento:
 featurePlatform:
   url: http://feature-platform.feature-platform.svc.cluster.local
 
-alertRuleEngine:
-  url: ""
+alerts:
+  returnThreshold: "0.005"
+  historyLimit: "200"
+  indexPath: /data/alerts.jsonl
+  # JSONL persistence is intentionally single-writer. Use PostgreSQL before
+  # enabling multiple orchestrator replicas.
+  persistence:
+    enabled: true
+    size: 1Gi
+
+governance:
+  historyLimit: "1000"
+  indexPath: /data/governance_decisions.jsonl
 
 resources:
   requests:

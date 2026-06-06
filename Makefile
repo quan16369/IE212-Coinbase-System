@@ -1,4 +1,4 @@
-.PHONY: ci security-check trivy-image-scan image-sbom sonar-up sonar-logs sonar-scan deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate terraform-destroy jenkins-up jenkins-logs airflow-up airflow-logs mlops-train mlops-version-manifest mlops-drift-check mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict data-validation-build data-validation-push data-validation-deploy data-validation-delete data-validation-status data-validation-logs data-validation-events data-validation-port-forward data-validation-smoke data-validation-run-telemetry-producer feature-platform-build feature-platform-push feature-platform-deploy feature-platform-delete feature-platform-status feature-platform-logs feature-platform-events feature-platform-port-forward feature-platform-smoke alert-rule-engine-build alert-rule-engine-push alert-rule-engine-deploy alert-rule-engine-delete alert-rule-engine-status alert-rule-engine-logs alert-rule-engine-events alert-rule-engine-port-forward alert-rule-engine-smoke alert-index-build alert-index-push alert-index-deploy alert-index-delete alert-index-status alert-index-logs alert-index-events alert-index-port-forward alert-index-smoke inference-orchestrator-build inference-orchestrator-push inference-orchestrator-deploy inference-orchestrator-ingress inference-orchestrator-delete inference-orchestrator-status inference-orchestrator-ingress-status inference-orchestrator-logs inference-orchestrator-events inference-orchestrator-port-forward inference-orchestrator-smoke inference-orchestrator-public-url inference-orchestrator-smoke-public gke-install-ingress-nginx gke-uninstall-ingress-nginx gke-deploy-bento gke-delete-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-cloud-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-smoke-public-bento gke-smoke-full-stack gke-run-synthetic-probe-bento gke-port-forward-bento gke-install-monitoring gke-uninstall-monitoring gke-monitoring-status gke-monitoring-grafana gke-monitoring-prometheus gke-monitoring-alertmanager gke-install-logging gke-uninstall-logging gke-logging-status gke-logging-loki gke-install-tracing gke-uninstall-tracing gke-tracing-status gke-tracing-tempo helm-template-bento helm-template-data-validation helm-template-feature-platform helm-template-alert-rule-engine helm-template-alert-index helm-template-inference-orchestrator
+.PHONY: ci security-check trivy-image-scan image-sbom sonar-up sonar-logs sonar-scan deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate terraform-destroy jenkins-up jenkins-logs airflow-up airflow-logs mlops-train mlops-version-manifest mlops-drift-check mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict data-validation-build data-validation-push data-validation-deploy data-validation-delete data-validation-status data-validation-logs data-validation-events data-validation-port-forward data-validation-smoke data-validation-run-telemetry-producer feature-platform-build feature-platform-push feature-platform-deploy feature-platform-delete feature-platform-status feature-platform-logs feature-platform-events feature-platform-port-forward feature-platform-smoke inference-orchestrator-build inference-orchestrator-push inference-orchestrator-deploy inference-orchestrator-ingress inference-orchestrator-delete inference-orchestrator-status inference-orchestrator-ingress-status inference-orchestrator-logs inference-orchestrator-events inference-orchestrator-port-forward inference-orchestrator-smoke inference-orchestrator-public-url inference-orchestrator-smoke-public gke-install-ingress-nginx gke-uninstall-ingress-nginx gke-deploy-bento gke-delete-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-cloud-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-smoke-public-bento gke-smoke-full-stack gke-run-synthetic-probe-bento gke-port-forward-bento gke-install-monitoring gke-uninstall-monitoring gke-monitoring-status gke-monitoring-grafana gke-monitoring-prometheus gke-monitoring-alertmanager gke-install-logging gke-uninstall-logging gke-logging-status gke-logging-loki gke-install-tracing gke-uninstall-tracing gke-tracing-status gke-tracing-tempo helm-template-bento helm-template-data-validation helm-template-feature-platform helm-template-inference-orchestrator
 
 ci:
 	bash scripts/ci_check.sh
@@ -155,60 +155,6 @@ feature-platform-port-forward:
 
 feature-platform-smoke:
 	python scripts/smoke_feature_platform.py
-
-alert-rule-engine-build:
-	docker build -f services/alert_rule_engine/Dockerfile -t coinbase-alert-rule-engine:latest .
-
-alert-rule-engine-push:
-	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; GIT_IMAGE_TAG="$$(git rev-parse --short HEAD 2>/dev/null || echo dev)"; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$${GIT_IMAGE_TAG}}" bash scripts/push_alert_rule_engine_image.sh
-
-alert-rule-engine-deploy:
-	bash scripts/deploy_alert_rule_engine_gke.sh
-
-alert-rule-engine-delete:
-	helm -n alert-routing uninstall alert-rule-engine
-
-alert-rule-engine-status:
-	kubectl -n alert-routing get deploy,po,svc,hpa,pdb -l app.kubernetes.io/name=alert-rule-engine -o wide
-
-alert-rule-engine-logs:
-	kubectl -n alert-routing logs deploy/alert-rule-engine --tail=$${TAIL:-120}
-
-alert-rule-engine-events:
-	kubectl -n alert-routing get events --sort-by=.lastTimestamp
-
-alert-rule-engine-port-forward:
-	kubectl -n alert-routing port-forward svc/alert-rule-engine $${PORT:-8092}:80
-
-alert-rule-engine-smoke:
-	python scripts/smoke_alert_rule_engine.py
-
-alert-index-build:
-	docker build -f services/alert_index/Dockerfile -t coinbase-alert-index:latest .
-
-alert-index-push:
-	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; GIT_IMAGE_TAG="$$(git rev-parse --short HEAD 2>/dev/null || echo dev)"; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$${GIT_IMAGE_TAG}}" bash scripts/push_alert_index_image.sh
-
-alert-index-deploy:
-	bash scripts/deploy_alert_index_gke.sh
-
-alert-index-delete:
-	helm -n alert-routing uninstall alert-index
-
-alert-index-status:
-	kubectl -n alert-routing get deploy,po,svc,hpa,pdb -l app.kubernetes.io/name=alert-index -o wide
-
-alert-index-logs:
-	kubectl -n alert-routing logs deploy/alert-index --tail=$${TAIL:-120}
-
-alert-index-events:
-	kubectl -n alert-routing get events --sort-by=.lastTimestamp
-
-alert-index-port-forward:
-	kubectl -n alert-routing port-forward svc/alert-index $${PORT:-8093}:80
-
-alert-index-smoke:
-	python scripts/smoke_alert_index.py
 
 inference-orchestrator-build:
 	docker build -f services/inference_orchestrator/Dockerfile -t coinbase-inference-orchestrator:latest .
@@ -388,12 +334,6 @@ helm-template-data-validation:
 
 helm-template-feature-platform:
 	helm template feature-platform charts/feature-platform
-
-helm-template-alert-rule-engine:
-	helm template alert-rule-engine charts/alert-rule-engine
-
-helm-template-alert-index:
-	helm template alert-index charts/alert-index
 
 helm-template-inference-orchestrator:
 	helm template inference-orchestrator charts/inference-orchestrator

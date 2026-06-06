@@ -12,6 +12,8 @@ PDB_ENABLED="${DATA_VALIDATION_PDB_ENABLED:-}"
 AUTOSCALING_ENABLED="${DATA_VALIDATION_AUTOSCALING_ENABLED:-}"
 VALIDATED_TARGET="${DATA_VALIDATION_VALIDATED_TARGET:-}"
 QUALITY_TARGET="${DATA_VALIDATION_QUALITY_TARGET:-}"
+IDEMPOTENCY_REDIS_URL="${VALIDATION_IDEMPOTENCY_REDIS_URL:-}"
+IDEMPOTENCY_TTL_SECONDS="${VALIDATION_IDEMPOTENCY_TTL_SECONDS:-}"
 TELEMETRY_PRODUCER_ENABLED="${DATA_VALIDATION_TELEMETRY_PRODUCER_ENABLED:-}"
 TELEMETRY_PRODUCER_SCHEDULE="${DATA_VALIDATION_TELEMETRY_PRODUCER_SCHEDULE:-}"
 FEATURE_PLATFORM_ENABLED="${DATA_VALIDATION_FEATURE_PLATFORM_ENABLED:-}"
@@ -75,6 +77,14 @@ if [[ -n "$QUALITY_TARGET" ]]; then
   HELM_ARGS+=(--set routing.qualityTarget="$QUALITY_TARGET")
 fi
 
+if [[ -n "$IDEMPOTENCY_REDIS_URL" ]]; then
+  HELM_ARGS+=(--set idempotency.redisUrl="$IDEMPOTENCY_REDIS_URL")
+fi
+
+if [[ -n "$IDEMPOTENCY_TTL_SECONDS" ]]; then
+  HELM_ARGS+=(--set idempotency.ttlSeconds="$IDEMPOTENCY_TTL_SECONDS")
+fi
+
 if [[ -n "$TELEMETRY_PRODUCER_ENABLED" ]]; then
   HELM_ARGS+=(--set telemetryProducer.enabled="$TELEMETRY_PRODUCER_ENABLED")
 fi
@@ -98,6 +108,7 @@ echo "Deployed data validation image: $IMAGE_URI"
 echo "Namespace: $NAMESPACE"
 echo "Validated target: ${VALIDATED_TARGET:-chart default}"
 echo "Quality target: ${QUALITY_TARGET:-chart default}"
+echo "Shared idempotency backend: ${IDEMPOTENCY_REDIS_URL:-memory cache}"
 echo "NetworkPolicy enabled: ${NETWORK_POLICY_ENABLED:-chart default}"
 echo "Telemetry producer enabled: ${TELEMETRY_PRODUCER_ENABLED:-chart default}"
 echo "Feature platform forwarding enabled: ${FEATURE_PLATFORM_ENABLED:-chart default}"

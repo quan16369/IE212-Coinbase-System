@@ -1,1 +1,0 @@
-"""Alert rule engine service."""

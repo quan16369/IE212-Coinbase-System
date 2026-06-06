@@ -3,6 +3,7 @@ import json
 import websocket
 import threading
 import datetime
+import hashlib
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 
@@ -11,6 +12,7 @@ CANDLES_TOPIC = "coin-data-model"
 BOOTSTRAP_SERVERS = os.environ.get("BOOTSTRAP_SERVERS", "localhost:9092")
 print(f"Attempting to connect to Kafka at: {BOOTSTRAP_SERVERS}")
 PRODUCT_IDS = ["ETH-USD", "BTC-USD", "XRP-USD"]
+SCHEMA_VERSION = "1.0"
 
 # Updated to use Advanced Trade WebSocket API
 COINBASE_ADVANCED_WS_URL = "wss://advanced-trade-ws.coinbase.com"
@@ -25,6 +27,36 @@ def create_producer():
     except KafkaError as e:
         print(f"Failed to create Kafka producer: {e}")
         return None
+
+def build_event(event_type, source_timestamp, payload):
+    normalized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    event_id = hashlib.sha256(f"{event_type}:{normalized}".encode()).hexdigest()
+    return {
+        "event_id": event_id,
+        "schema_version": SCHEMA_VERSION,
+        "event_type": event_type,
+        "timestamp": source_timestamp,
+        "source": "coinbase-advanced-trade",
+        "payload": payload,
+    }
+
+def candle_payload(candle, fallback_timestamp):
+    raw_timestamp = candle.get("start") or fallback_timestamp
+    if raw_timestamp and str(raw_timestamp).isdigit():
+        timestamp = datetime.datetime.fromtimestamp(
+            int(raw_timestamp), tz=datetime.timezone.utc
+        ).isoformat()
+    else:
+        timestamp = raw_timestamp or datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return {
+        "timestamp": timestamp,
+        "symbol": candle.get("product_id", "unknown"),
+        "open": float(candle["open"]),
+        "high": float(candle["high"]),
+        "low": float(candle["low"]),
+        "close": float(candle["close"]),
+        "volume": float(candle["volume"]),
+    }
 
 def on_open(ws):
     print("WebSocket connection opened")
@@ -91,7 +123,8 @@ def on_message(ws, message, producer, subscribed):
                             ticker["time"] = timestamp if timestamp else current_time
                         
                         product_id = ticker.get("product_id", "unknown")
-                        ticker_json = json.dumps(ticker)
+                        envelope = build_event("coinbase.ticker", ticker["time"], ticker)
+                        ticker_json = json.dumps(envelope)
                         print(f"Sending {product_id} ticker to Kafka: {ticker_json[:100]}...")
                         producer.send(TOPIC, key=product_id.encode(), value=ticker_json)
         
@@ -101,7 +134,9 @@ def on_message(ws, message, producer, subscribed):
                 if "candles" in event:
                     for candle in event.get("candles", []):
                         product_id = candle.get("product_id", "unknown")
-                        candle_json = json.dumps(candle)
+                        payload = candle_payload(candle, timestamp)
+                        envelope = build_event("coinbase.candle", payload["timestamp"], payload)
+                        candle_json = json.dumps(envelope)
                         print(f"Sending {product_id} candle to Kafka: {candle_json[:100]}...")
                         producer.send(CANDLES_TOPIC, key=product_id.encode(), value=candle_json)
         else:

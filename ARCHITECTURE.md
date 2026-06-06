@@ -24,6 +24,19 @@ The common service lifecycle is:
 service code -> Docker image -> Artifact Registry -> Helm deploy -> smoke test -> observe
 ```
 
+Kafka and ingestion APIs use the shared versioned envelope in
+`contracts/events.py`. `event_id` is the idempotency key, `schema_version`
+controls compatibility, and the envelope timestamp records event time.
+
+The inference orchestrator owns prediction coordination, alert rule evaluation,
+and alert history. These responsibilities share one request lifecycle and do not
+need independent scaling or deployment in the current system.
+
+Each successful prediction also emits decision-bound governance telemetry. It
+captures the model decision, model identity, latency, available drift evidence,
+and operational health. Records form a tamper-evident hash chain on the
+orchestrator PVC that can be checked through `GET /governance/integrity`.
+
 ## Generated Files
 
 The following are generated and should not be committed:

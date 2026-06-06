@@ -6,6 +6,7 @@ COPY services/data_validation/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/data_validation ./services/data_validation
+COPY contracts ./contracts
 
 ENV PYTHONPATH=/app
 EXPOSE 8080

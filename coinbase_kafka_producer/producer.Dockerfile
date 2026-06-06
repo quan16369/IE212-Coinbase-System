@@ -10,6 +10,7 @@ RUN apt-get update && \
 # Copy source code
 COPY coinbase_kafka_producer/producer.py .
 COPY coinbase_kafka_producer/requirements.txt .
+COPY contracts ./contracts
 
 # Install python dependencies
 RUN pip install -r requirements.txt

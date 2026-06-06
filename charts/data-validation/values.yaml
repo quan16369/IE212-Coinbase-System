@@ -14,6 +14,11 @@ routing:
   validatedTarget: validated-candles
   qualityTarget: quality-candles
 
+idempotency:
+  cacheSize: 10000
+  redisUrl: ""
+  ttlSeconds: 86400
+
 resources:
   requests:
     cpu: 50m

@@ -6,6 +6,7 @@ COPY services/feature_platform/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/feature_platform ./services/feature_platform
+COPY contracts ./contracts
 
 ENV PYTHONPATH=/app
 EXPOSE 8080
