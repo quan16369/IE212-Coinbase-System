@@ -1,0 +1,6 @@
+apiVersion: v2
+name: streaming-platform
+description: Kafka and Coinbase telemetry producer for GKE
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,41 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "streaming-platform.fullname" . }}-topics-{{ .Release.Revision }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "streaming-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: topic-init
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "streaming-platform.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: topic-init
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      containers:
+        - name: create-topics
+          image: {{ .Values.kafka.image | quote }}
+          command:
+            - bash
+            - -ec
+            - |
+              until kafka-topics --bootstrap-server {{ include "streaming-platform.fullname" . }}-kafka:9092 --list >/dev/null 2>&1; do sleep 5; done
+              for topic in {{ .Values.kafka.topics.ticker }} {{ .Values.kafka.topics.candle }} {{ .Values.kafka.topics.validated }} {{ .Values.kafka.topics.quality }}; do
+                kafka-topics --bootstrap-server {{ include "streaming-platform.fullname" . }}-kafka:9092 \
+                  --create --if-not-exists --topic "$topic" --partitions 3 --replication-factor 1
+              done
+          resources:
+            requests:
+              cpu: 25m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

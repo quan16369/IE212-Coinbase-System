@@ -1272,6 +1272,44 @@ To remove only this feature service:
 make feature-platform-delete
 ```
 
+### Streaming platform on GKE
+
+The `data-streaming` namespace contains a single Kafka KRaft broker with a 2 Gi
+PVC and the Coinbase WebSocket producer. Helm creates these topics:
+
+```text
+coin-data
+coin-data-model
+coin-data-validated
+coin-data-quality
+```
+
+Build, push, and deploy:
+
+```bash
+make streaming-platform-build
+IMAGE_TAG="$(git rev-parse --short HEAD)" make streaming-platform-push
+make streaming-platform-deploy
+```
+
+Verify Kafka, topics, and producer:
+
+```bash
+make streaming-platform-status
+make streaming-platform-smoke
+make streaming-platform-logs
+```
+
+Remove the release when stopping the environment:
+
+```bash
+make streaming-platform-delete
+```
+
+The single broker and replication factor one are appropriate for the current
+Autopilot development cluster. Use a multi-broker Kafka deployment with
+replication when migrating to GKE Standard for production.
+
 ### Inference orchestrator service
 
 The `model-serving` namespace contains the `inference-orchestrator` API. It receives recent candle history, calls BentoML for prediction, attaches feature context, evaluates the alert rule, and persists alert history. These responsibilities share one request lifecycle and are intentionally deployed as one service.

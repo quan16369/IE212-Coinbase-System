@@ -28,6 +28,13 @@ Kafka and ingestion APIs use the shared versioned envelope in
 `contracts/events.py`. `event_id` is the idempotency key, `schema_version`
 controls compatibility, and the envelope timestamp records event time.
 
+The `data-streaming` namespace contains the single-broker Kafka KRaft
+development cluster and Coinbase WebSocket producer. The broker is deployed as
+a StatefulSet with persistent storage, while a Helm hook creates the raw,
+validated, and quality topics. This topology is intentionally sized for the
+Autopilot development environment; production availability requires multiple
+brokers and replication after moving to GKE Standard.
+
 The inference orchestrator owns prediction coordination, alert rule evaluation,
 and alert history. These responsibilities share one request lifecycle and do not
 need independent scaling or deployment in the current system.

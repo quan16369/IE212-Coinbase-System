@@ -99,6 +99,30 @@ mlops-logs:
 mlops-test-predict:
 	DATA="$(DATA)" python scripts/test_bento_predict.py
 
+streaming-platform-build:
+	docker build -f coinbase_kafka_producer/producer.Dockerfile -t coinbase-kafka-producer:latest .
+
+streaming-platform-push:
+	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; GIT_IMAGE_TAG="$$(git rev-parse --short HEAD 2>/dev/null || echo dev)"; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$${GIT_IMAGE_TAG}}" bash scripts/push_kafka_producer_image.sh
+
+streaming-platform-deploy:
+	bash scripts/deploy_streaming_platform_gke.sh
+
+streaming-platform-delete:
+	helm -n data-streaming uninstall streaming-platform
+
+streaming-platform-status:
+	kubectl -n data-streaming get statefulset,deploy,po,svc,pvc,job -l app.kubernetes.io/name=streaming-platform -o wide
+
+streaming-platform-logs:
+	kubectl -n data-streaming logs deploy/streaming-platform-producer --tail=$${TAIL:-120}
+
+streaming-platform-events:
+	kubectl -n data-streaming get events --sort-by=.lastTimestamp
+
+streaming-platform-smoke:
+	bash scripts/smoke_streaming_platform.sh
+
 data-validation-build:
 	docker build -f services/data_validation/Dockerfile -t coinbase-data-validation:latest .
 

@@ -1,0 +1,33 @@
+namespace: data-streaming
+
+kafka:
+  image: confluentinc/cp-kafka:7.7.1
+  clusterId: MkU3OEVBNTcwNTJENDM2Qk
+  storageSize: 2Gi
+  topics:
+    ticker: coin-data
+    candle: coin-data-model
+    validated: coin-data-validated
+    quality: coin-data-quality
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: "1"
+      memory: 1536Mi
+
+producer:
+  replicaCount: 1
+  image:
+    repository: asia-southeast1-docker.pkg.dev/PROJECT_ID/coinbase-mlops/coinbase-kafka-producer
+    tag: dev
+    pullPolicy: Always
+  productIds: ETH-USD,BTC-USD,XRP-USD
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi

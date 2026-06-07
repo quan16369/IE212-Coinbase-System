@@ -7,11 +7,15 @@ import hashlib
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
 
-TOPIC = "coin-data"
-CANDLES_TOPIC = "coin-data-model" 
+TOPIC = os.environ.get("KAFKA_TICKER_TOPIC", "coin-data")
+CANDLES_TOPIC = os.environ.get("KAFKA_CANDLE_TOPIC", "coin-data-model")
 BOOTSTRAP_SERVERS = os.environ.get("BOOTSTRAP_SERVERS", "localhost:9092")
 print(f"Attempting to connect to Kafka at: {BOOTSTRAP_SERVERS}")
-PRODUCT_IDS = ["ETH-USD", "BTC-USD", "XRP-USD"]
+PRODUCT_IDS = [
+    product.strip()
+    for product in os.environ.get("COINBASE_PRODUCT_IDS", "ETH-USD,BTC-USD,XRP-USD").split(",")
+    if product.strip()
+]
 SCHEMA_VERSION = "1.0"
 
 # Updated to use Advanced Trade WebSocket API

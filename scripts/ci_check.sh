@@ -61,6 +61,7 @@ if command -v helm >/dev/null 2>&1; then
   helm lint charts/data-validation
   helm lint charts/feature-platform
   helm lint charts/inference-orchestrator
+  helm lint charts/streaming-platform
 else
   echo "helm not found; skipping Helm chart lint"
 fi

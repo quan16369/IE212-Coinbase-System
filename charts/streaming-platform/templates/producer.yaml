@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "streaming-platform.fullname" . }}-producer
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "streaming-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: producer
+spec:
+  replicas: {{ .Values.producer.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "streaming-platform.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: producer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "streaming-platform.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: producer
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: producer
+          image: "{{ .Values.producer.image.repository }}:{{ .Values.producer.image.tag }}"
+          imagePullPolicy: {{ .Values.producer.image.pullPolicy }}
+          env:
+            - name: BOOTSTRAP_SERVERS
+              value: {{ include "streaming-platform.fullname" . }}-kafka:9092
+            - name: KAFKA_TICKER_TOPIC
+              value: {{ .Values.kafka.topics.ticker | quote }}
+            - name: KAFKA_CANDLE_TOPIC
+              value: {{ .Values.kafka.topics.candle | quote }}
+            - name: COINBASE_PRODUCT_IDS
+              value: {{ .Values.producer.productIds | quote }}
+          resources:
+            {{- toYaml .Values.producer.resources | nindent 12 }}
