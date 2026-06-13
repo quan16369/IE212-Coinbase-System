@@ -18,6 +18,8 @@ ingress:
 
 model:
   fileName: coinbase_ml_model.joblib
+  uri: ""
+  mlflowTrackingUri: http://mlflow.model-training.svc.cluster.local:5000
 
 tracing:
   enabled: false

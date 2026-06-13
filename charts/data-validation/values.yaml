@@ -11,8 +11,21 @@ service:
   port: 80
 
 routing:
-  validatedTarget: validated-candles
-  qualityTarget: quality-candles
+  validatedTarget: coin-data-validated
+  qualityTarget: coin-data-quality
+
+kafkaWorker:
+  enabled: true
+  bootstrapServers: streaming-platform-kafka.data-streaming.svc.cluster.local:9092
+  inputTopic: coin-data-model
+  consumerGroup: coinbase-data-validation-v1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
 
 idempotency:
   cacheSize: 10000

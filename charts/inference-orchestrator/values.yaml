@@ -36,6 +36,7 @@ alerts:
 governance:
   historyLimit: "1000"
   indexPath: /data/governance_decisions.jsonl
+  outcomeDbPath: /data/outcomes.db
 
 resources:
   requests:

@@ -10,6 +10,20 @@ service:
   type: ClusterIP
   port: 80
 
+kafkaWorker:
+  enabled: true
+  bootstrapServers: streaming-platform-kafka.data-streaming.svc.cluster.local:9092
+  inputTopic: coin-data-validated
+  consumerGroup: coinbase-feature-platform-v1
+  ingestUrl: http://feature-platform.feature-platform.svc.cluster.local/features/ingest
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
 store:
   historyLimit: 200
   online: redis

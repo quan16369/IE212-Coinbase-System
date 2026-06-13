@@ -1,0 +1,58 @@
+{{- if .Values.rawDataReplay.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "streaming-platform.fullname" . }}-raw-data-replay
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "streaming-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: raw-data-replay
+  annotations:
+    iam.gke.io/gcp-service-account: {{ .Values.rawDataReplay.gcpServiceAccount | quote }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "streaming-platform.fullname" . }}-raw-data-replay
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "streaming-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: raw-data-replay
+spec:
+  schedule: {{ .Values.rawDataReplay.schedule | quote }}
+  suspend: {{ .Values.rawDataReplay.suspend }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: {{ include "streaming-platform.name" . }}
+            app.kubernetes.io/instance: {{ .Release.Name }}
+            app.kubernetes.io/component: raw-data-replay
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "streaming-platform.fullname" . }}-raw-data-replay
+          containers:
+            - name: raw-data-replay
+              image: "{{ .Values.rawDataReplay.image.repository }}:{{ .Values.rawDataReplay.image.tag }}"
+              imagePullPolicy: {{ .Values.rawDataReplay.image.pullPolicy }}
+              env:
+                - name: BOOTSTRAP_SERVERS
+                  value: {{ include "streaming-platform.fullname" . }}-kafka.{{ .Release.Namespace }}.svc.cluster.local:9092
+                - name: GCS_BUCKET
+                  value: {{ .Values.rawDataReplay.bucket | quote }}
+                - name: GCS_PREFIX
+                  value: {{ .Values.rawDataReplay.prefix | quote }}
+                - name: SOURCE_TOPIC
+                  value: {{ .Values.kafka.topics.candle | quote }}
+                - name: TARGET_TOPIC
+                  value: {{ .Values.kafka.topics.replay | quote }}
+                - name: REPLAY_ID
+                  value: {{ .Values.rawDataReplay.replayId | quote }}
+              resources:
+                {{- toYaml .Values.rawDataReplay.resources | nindent 16 }}
+{{- end }}

@@ -33,3 +33,18 @@ output "jenkins_service_account_key_json_base64" {
   value       = try(google_service_account_key.jenkins_deployer[0].private_key, null)
   sensitive   = true
 }
+
+output "raw_data_bucket_name" {
+  description = "GCS bucket receiving raw Kafka events as Parquet."
+  value       = google_storage_bucket.raw_data.name
+}
+
+output "raw_data_sink_service_account_email" {
+  description = "Workload Identity service account for the raw-data sink."
+  value       = google_service_account.raw_data_sink.email
+}
+
+output "raw_data_replay_service_account_email" {
+  description = "Workload Identity service account for the raw-data replay workflow."
+  value       = google_service_account.raw_data_replay.email
+}

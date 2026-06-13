@@ -32,6 +32,8 @@ AUTOSCALING_TARGET_CPU="${BENTO_AUTOSCALING_TARGET_CPU:-}"
 SYNTHETIC_PROBE_ENABLED="${BENTO_SYNTHETIC_PROBE_ENABLED:-}"
 SYNTHETIC_PROBE_SCHEDULE="${BENTO_SYNTHETIC_PROBE_SCHEDULE:-}"
 HELM_TIMEOUT="${HELM_TIMEOUT:-300s}"
+BENTO_MLOPS_MODEL_URI="${BENTO_MLOPS_MODEL_URI:-}"
+BENTO_MLFLOW_TRACKING_URI="${BENTO_MLFLOW_TRACKING_URI:-}"
 
 if [[ -z "$IMAGE_URI" ]]; then
   if [[ -f artifacts/mlops/bento_image_uri.txt ]]; then
@@ -62,6 +64,14 @@ HELM_ARGS=(
   --set image.repository="$IMAGE_REPOSITORY"
   --set image.tag="$IMAGE_TAG"
 )
+
+if [[ -n "$BENTO_MLOPS_MODEL_URI" ]]; then
+  HELM_ARGS+=(--set-string model.uri="$BENTO_MLOPS_MODEL_URI")
+fi
+
+if [[ -n "$BENTO_MLFLOW_TRACKING_URI" ]]; then
+  HELM_ARGS+=(--set-string model.mlflowTrackingUri="$BENTO_MLFLOW_TRACKING_URI")
+fi
 
 if [[ -n "$SERVICE_TYPE" ]]; then
   HELM_ARGS+=(--set service.type="$SERVICE_TYPE")
@@ -144,5 +154,6 @@ echo "NetworkPolicy enabled: ${NETWORK_POLICY_ENABLED:-chart default}"
 echo "PodDisruptionBudget enabled: ${PDB_ENABLED:-chart default}"
 echo "Autoscaling enabled: ${AUTOSCALING_ENABLED:-chart default}"
 echo "Synthetic probe enabled: ${SYNTHETIC_PROBE_ENABLED:-chart default}"
+echo "MLflow model URI: ${BENTO_MLOPS_MODEL_URI:-local image artifact}"
 echo "Test locally with:"
 echo "  kubectl -n $NAMESPACE port-forward svc/bento-price-predictor 3001:80"

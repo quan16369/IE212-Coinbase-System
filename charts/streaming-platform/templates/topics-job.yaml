@@ -28,7 +28,7 @@ spec:
             - -ec
             - |
               until kafka-topics --bootstrap-server {{ include "streaming-platform.fullname" . }}-kafka:9092 --list >/dev/null 2>&1; do sleep 5; done
-              for topic in {{ .Values.kafka.topics.ticker }} {{ .Values.kafka.topics.candle }} {{ .Values.kafka.topics.validated }} {{ .Values.kafka.topics.quality }}; do
+              for topic in {{ .Values.kafka.topics.ticker }} {{ .Values.kafka.topics.candle }} {{ .Values.kafka.topics.validated }} {{ .Values.kafka.topics.quality }} {{ .Values.kafka.topics.replay }}; do
                 kafka-topics --bootstrap-server {{ include "streaming-platform.fullname" . }}-kafka:9092 \
                   --create --if-not-exists --topic "$topic" --partitions 3 --replication-factor 1
               done

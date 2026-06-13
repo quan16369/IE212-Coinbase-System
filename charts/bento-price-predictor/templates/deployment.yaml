@@ -35,7 +35,9 @@ spec:
             - name: MLOPS_MODEL_PATH
               value: "/models/{{ .Values.model.fileName }}"
             - name: MLOPS_MODEL_URI
-              value: ""
+              value: {{ .Values.model.uri | quote }}
+            - name: MLFLOW_TRACKING_URI
+              value: {{ .Values.model.mlflowTrackingUri | quote }}
             - name: MLOPS_HORIZON
               value: "4"
             - name: MLOPS_FREQ_MINUTES

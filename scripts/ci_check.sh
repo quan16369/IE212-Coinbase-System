@@ -36,6 +36,7 @@ if [[ -n "$PYTHON_BIN" ]]; then
     'services/data_validation/app.py',
     'services/feature_platform/app.py',
     'services/inference_orchestrator/app.py',
+    'services/raw_data_sink/sink.py',
     'scripts/promote_mlflow_model.py',
     'scripts/smoke_feature_platform.py',
     'scripts/smoke_data_validation.py',
@@ -60,8 +61,9 @@ if command -v helm >/dev/null 2>&1; then
   helm lint charts/bento-price-predictor
   helm lint charts/data-validation
   helm lint charts/feature-platform
-  helm lint charts/inference-orchestrator
-  helm lint charts/streaming-platform
+helm lint charts/inference-orchestrator
+helm lint charts/streaming-platform
+helm lint charts/model-training
 else
   echo "helm not found; skipping Helm chart lint"
 fi

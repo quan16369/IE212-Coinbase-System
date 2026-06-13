@@ -9,6 +9,7 @@ kafka:
     candle: coin-data-model
     validated: coin-data-validated
     quality: coin-data-quality
+    replay: coin-data-replay
   resources:
     requests:
       cpu: 250m
@@ -31,3 +32,43 @@ producer:
     limits:
       cpu: 250m
       memory: 256Mi
+
+rawDataSink:
+  enabled: false
+  image:
+    repository: asia-southeast1-docker.pkg.dev/PROJECT_ID/coinbase-mlops/coinbase-raw-data-sink
+    tag: dev
+    pullPolicy: Always
+  gcpServiceAccount: raw-data-sink@PROJECT_ID.iam.gserviceaccount.com
+  bucket: PROJECT_ID-coinbase-raw-data
+  prefix: raw
+  consumerGroup: coinbase-gcs-raw-sink-v1
+  batchSize: 1000
+  flushIntervalSeconds: 300
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi
+
+rawDataReplay:
+  enabled: false
+  suspend: true
+  schedule: "0 0 1 1 *"
+  image:
+    repository: asia-southeast1-docker.pkg.dev/PROJECT_ID/coinbase-mlops/coinbase-raw-data-replay
+    tag: dev
+    pullPolicy: Always
+  gcpServiceAccount: raw-data-replay@PROJECT_ID.iam.gserviceaccount.com
+  bucket: PROJECT_ID-coinbase-raw-data
+  prefix: raw
+  replayId: recovery-default
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 768Mi

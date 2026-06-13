@@ -1,4 +1,4 @@
-.PHONY: ci security-check trivy-image-scan image-sbom sonar-up sonar-logs sonar-scan deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate terraform-destroy jenkins-up jenkins-logs airflow-up airflow-logs mlops-train mlops-version-manifest mlops-drift-check mlops-promote-model mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict data-validation-build data-validation-push data-validation-deploy data-validation-delete data-validation-status data-validation-logs data-validation-events data-validation-port-forward data-validation-smoke data-validation-run-telemetry-producer feature-platform-build feature-platform-push feature-platform-deploy feature-platform-delete feature-platform-status feature-platform-logs feature-platform-events feature-platform-port-forward feature-platform-smoke inference-orchestrator-build inference-orchestrator-push inference-orchestrator-deploy inference-orchestrator-ingress inference-orchestrator-delete inference-orchestrator-status inference-orchestrator-ingress-status inference-orchestrator-logs inference-orchestrator-events inference-orchestrator-port-forward inference-orchestrator-smoke inference-orchestrator-public-url inference-orchestrator-smoke-public gke-install-ingress-nginx gke-uninstall-ingress-nginx gke-deploy-bento gke-delete-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-cloud-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-smoke-public-bento gke-smoke-full-stack gke-run-synthetic-probe-bento gke-port-forward-bento gke-install-monitoring gke-uninstall-monitoring gke-monitoring-status gke-monitoring-grafana gke-monitoring-prometheus gke-monitoring-alertmanager gke-install-logging gke-uninstall-logging gke-logging-status gke-logging-loki gke-install-tracing gke-uninstall-tracing gke-tracing-status gke-tracing-tempo helm-template-bento helm-template-data-validation helm-template-feature-platform helm-template-inference-orchestrator
+.PHONY: ci security-check trivy-image-scan image-sbom sonar-up sonar-logs sonar-scan deploy up down ps logs migrate backup restore terraform-fmt terraform-init terraform-plan terraform-validate terraform-destroy gke-workday-start jenkins-up jenkins-logs airflow-up airflow-logs mlops-train mlops-version-manifest mlops-drift-check mlops-promote-model mlops-validate-promote-deploy mlops-build-bento mlops-push-bento mlops-up mlops-logs mlops-test-predict model-training-build model-training-push model-training-deploy model-training-delete model-training-status model-training-run streaming-platform-build streaming-platform-push streaming-platform-deploy streaming-platform-delete streaming-platform-status streaming-platform-logs streaming-platform-events streaming-platform-smoke streaming-e2e-smoke raw-data-sink-build raw-data-sink-push raw-data-sink-deploy raw-data-sink-smoke raw-data-replay-build raw-data-replay-push raw-data-replay-deploy raw-data-replay-run data-validation-build data-validation-push data-validation-deploy data-validation-delete data-validation-status data-validation-logs data-validation-events data-validation-port-forward data-validation-smoke data-validation-run-telemetry-producer feature-platform-build feature-platform-push feature-platform-deploy feature-platform-delete feature-platform-status feature-platform-logs feature-platform-events feature-platform-port-forward feature-platform-smoke inference-orchestrator-build inference-orchestrator-push inference-orchestrator-deploy inference-orchestrator-ingress inference-orchestrator-delete inference-orchestrator-status inference-orchestrator-ingress-status inference-orchestrator-logs inference-orchestrator-events inference-orchestrator-port-forward inference-orchestrator-smoke inference-orchestrator-public-url inference-orchestrator-smoke-public gke-install-ingress-nginx gke-uninstall-ingress-nginx gke-deploy-bento gke-delete-bento gke-ingress-bento gke-expose-bento gke-unexpose-bento gke-public-url-bento gke-ingress-url-bento gke-history-bento gke-rollback-bento gke-status-bento gke-describe-bento gke-top-bento gke-ingress-status-bento gke-observe-bento gke-logs-bento gke-follow-logs-bento gke-cloud-logs-bento gke-events-bento gke-smoke-bento gke-smoke-in-cluster-bento gke-smoke-public-bento gke-smoke-full-stack gke-run-synthetic-probe-bento gke-port-forward-bento gke-install-monitoring gke-uninstall-monitoring gke-monitoring-status gke-monitoring-grafana gke-monitoring-prometheus gke-monitoring-alertmanager gke-install-logging gke-uninstall-logging gke-logging-status gke-logging-loki gke-install-tracing gke-uninstall-tracing gke-tracing-status gke-tracing-tempo helm-template-bento helm-template-data-validation helm-template-feature-platform helm-template-inference-orchestrator
 
 ci:
 	bash scripts/ci_check.sh
@@ -60,6 +60,9 @@ terraform-plan:
 terraform-destroy:
 	terraform -chdir=infra/terraform destroy
 
+gke-workday-start:
+	DEPLOY_SERVICES="$(DEPLOY_SERVICES)" INSTALL_OBSERVABILITY="$(INSTALL_OBSERVABILITY)" bash scripts/start_gke_workday.sh
+
 jenkins-up:
 	COMPOSE_PROFILES=ci docker compose --env-file .env up -d jenkins
 
@@ -82,7 +85,10 @@ mlops-drift-check:
 	python scripts/check_feature_drift.py
 
 mlops-promote-model:
-	MODEL_VERSION="$(MODEL_VERSION)" MODEL_ALIAS="$(MODEL_ALIAS)" python scripts/promote_mlflow_model.py
+	MODEL_VALIDATION_REPORT=artifacts/mlops/model_validation_report.json MODEL_VERSION="$(MODEL_VERSION)" MODEL_ALIAS="$(MODEL_ALIAS)" python scripts/promote_mlflow_model.py
+
+mlops-validate-promote-deploy:
+	bash scripts/validate_promote_deploy_bento.sh
 
 mlops-build-bento:
 	bash scripts/build_bento.sh
@@ -99,8 +105,53 @@ mlops-logs:
 mlops-test-predict:
 	DATA="$(DATA)" python scripts/test_bento_predict.py
 
+model-training-build:
+	docker build -f mlops/training.Dockerfile -t coinbase-model-training:latest .
+
+model-training-push:
+	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$$(git rev-parse --short HEAD)}" bash scripts/push_model_training_image.sh
+
+model-training-deploy:
+	bash scripts/deploy_model_training_gke.sh
+
+model-training-delete:
+	helm -n model-training uninstall model-training
+
+model-training-status:
+	kubectl -n model-training get statefulset,cronjob,job,pod,svc,pvc
+
+model-training-run:
+	kubectl -n model-training create job --from=cronjob/coinbase-model-training coinbase-model-training-manual-$$(date +%s)
+
+model-validation-run:
+	kubectl -n model-training create job --from=cronjob/coinbase-model-validation coinbase-model-validation-manual-$$(date +%s)
+
 streaming-platform-build:
 	docker build -f coinbase_kafka_producer/producer.Dockerfile -t coinbase-kafka-producer:latest .
+
+raw-data-sink-build:
+	docker build -f services/raw_data_sink/Dockerfile -t coinbase-raw-data-sink:latest .
+
+raw-data-sink-push:
+	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; GIT_IMAGE_TAG="$$(git rev-parse --short HEAD 2>/dev/null || echo dev)"; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$${GIT_IMAGE_TAG}}" bash scripts/push_raw_data_sink_image.sh
+
+raw-data-sink-deploy:
+	RAW_DATA_SINK_ENABLED=true RAW_DATA_BUCKET="$$(terraform -chdir=infra/terraform output -raw raw_data_bucket_name)" RAW_DATA_SINK_GCP_SERVICE_ACCOUNT="$$(terraform -chdir=infra/terraform output -raw raw_data_sink_service_account_email)" bash scripts/deploy_streaming_platform_gke.sh
+
+raw-data-sink-smoke:
+	bash scripts/smoke_raw_data_sink.sh
+
+raw-data-replay-build:
+	docker build -f services/raw_data_replay/Dockerfile -t coinbase-raw-data-replay:latest .
+
+raw-data-replay-push:
+	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; GIT_IMAGE_TAG="$$(git rev-parse --short HEAD 2>/dev/null || echo dev)"; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$${GIT_IMAGE_TAG}}" bash scripts/push_raw_data_replay_image.sh
+
+raw-data-replay-deploy:
+	RAW_DATA_SINK_ENABLED=true RAW_DATA_REPLAY_ENABLED=true RAW_DATA_BUCKET="$$(terraform -chdir=infra/terraform output -raw raw_data_bucket_name)" RAW_DATA_SINK_GCP_SERVICE_ACCOUNT="$$(terraform -chdir=infra/terraform output -raw raw_data_sink_service_account_email)" RAW_DATA_REPLAY_GCP_SERVICE_ACCOUNT="$$(terraform -chdir=infra/terraform output -raw raw_data_replay_service_account_email)" bash scripts/deploy_streaming_platform_gke.sh
+
+raw-data-replay-run:
+	bash scripts/run_raw_data_replay.sh
 
 streaming-platform-push:
 	PARAM_IMAGE_TAG="$(IMAGE_TAG)"; set -a; . ./.env; set +a; GIT_IMAGE_TAG="$$(git rev-parse --short HEAD 2>/dev/null || echo dev)"; IMAGE_TAG="$${PARAM_IMAGE_TAG:-$${GIT_IMAGE_TAG}}" bash scripts/push_kafka_producer_image.sh
@@ -122,6 +173,9 @@ streaming-platform-events:
 
 streaming-platform-smoke:
 	bash scripts/smoke_streaming_platform.sh
+
+streaming-e2e-smoke:
+	bash scripts/smoke_streaming_e2e.sh
 
 data-validation-build:
 	docker build -f services/data_validation/Dockerfile -t coinbase-data-validation:latest .
@@ -227,6 +281,9 @@ gke-uninstall-ingress-nginx:
 
 gke-deploy-bento:
 	bash scripts/deploy_bento_gke.sh
+
+gke-deploy-bento-safe:
+	bash scripts/deploy_bento_with_rollback.sh
 
 gke-delete-bento:
 	helm -n app uninstall bento-price-predictor

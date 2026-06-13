@@ -1,0 +1,57 @@
+{{- if .Values.rawDataSink.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "streaming-platform.fullname" . }}-raw-data-sink
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "streaming-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: raw-data-sink
+  annotations:
+    iam.gke.io/gcp-service-account: {{ .Values.rawDataSink.gcpServiceAccount | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "streaming-platform.fullname" . }}-raw-data-sink
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "streaming-platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: raw-data-sink
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "streaming-platform.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: raw-data-sink
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "streaming-platform.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: raw-data-sink
+    spec:
+      serviceAccountName: {{ include "streaming-platform.fullname" . }}-raw-data-sink
+      containers:
+        - name: raw-data-sink
+          image: "{{ .Values.rawDataSink.image.repository }}:{{ .Values.rawDataSink.image.tag }}"
+          imagePullPolicy: {{ .Values.rawDataSink.image.pullPolicy }}
+          env:
+            - name: BOOTSTRAP_SERVERS
+              value: {{ include "streaming-platform.fullname" . }}-kafka.{{ .Release.Namespace }}.svc.cluster.local:9092
+            - name: SOURCE_TOPIC
+              value: {{ .Values.kafka.topics.candle | quote }}
+            - name: CONSUMER_GROUP
+              value: {{ .Values.rawDataSink.consumerGroup | quote }}
+            - name: GCS_BUCKET
+              value: {{ .Values.rawDataSink.bucket | quote }}
+            - name: GCS_PREFIX
+              value: {{ .Values.rawDataSink.prefix | quote }}
+            - name: BATCH_SIZE
+              value: {{ .Values.rawDataSink.batchSize | quote }}
+            - name: FLUSH_INTERVAL_SECONDS
+              value: {{ .Values.rawDataSink.flushIntervalSeconds | quote }}
+          resources:
+            {{- toYaml .Values.rawDataSink.resources | nindent 12 }}
+{{- end }}

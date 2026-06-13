@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: coinbase-model-validation
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+spec:
+  schedule: {{ .Values.validation.schedule | quote }}
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: validation
+              image: "{{ .Values.training.image.repository }}:{{ .Values.training.image.tag }}"
+              imagePullPolicy: {{ .Values.training.image.pullPolicy }}
+              command: ["python", "/app/scripts/promote_mlflow_model.py"]
+              env:
+                - name: MLFLOW_TRACKING_URI
+                  value: http://mlflow:5000
+                - name: MLFLOW_REGISTERED_MODEL_NAME
+                  value: {{ .Values.validation.modelName | quote }}
+                - name: MODEL_ALIAS
+                  value: {{ .Values.validation.alias | quote }}
+                - name: MIN_RETURN_R2
+                  value: {{ .Values.validation.minReturnR2 | quote }}
+                - name: MIN_DIRECTION_ACCURACY
+                  value: {{ .Values.validation.minDirectionAccuracy | quote }}
+                - name: MIN_MAE_IMPROVEMENT_VS_NAIVE
+                  value: {{ .Values.validation.minMaeImprovementVsNaive | quote }}
+                - name: MIN_RMSE_IMPROVEMENT_VS_NAIVE
+                  value: {{ .Values.validation.minRmseImprovementVsNaive | quote }}
+              resources:
+                {{- toYaml .Values.validation.resources | nindent 16 }}

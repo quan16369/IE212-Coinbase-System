@@ -38,6 +38,8 @@ spec:
               value: {{ .Values.governance.historyLimit | quote }}
             - name: GOVERNANCE_INDEX_PATH
               value: {{ .Values.governance.indexPath | quote }}
+            - name: OUTCOME_DB_PATH
+              value: {{ .Values.governance.outcomeDbPath | quote }}
           volumeMounts:
             - name: alert-data
               mountPath: /data

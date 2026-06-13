@@ -74,3 +74,20 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.kafkaWorker.enabled }}
+        - name: kafka-worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "services.feature_platform.kafka_worker"]
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafkaWorker.bootstrapServers | quote }}
+            - name: KAFKA_INPUT_TOPIC
+              value: {{ .Values.kafkaWorker.inputTopic | quote }}
+            - name: KAFKA_CONSUMER_GROUP
+              value: {{ .Values.kafkaWorker.consumerGroup | quote }}
+            - name: FEATURE_INGEST_URL
+              value: {{ .Values.kafkaWorker.ingestUrl | quote }}
+          resources:
+            {{- toYaml .Values.kafkaWorker.resources | nindent 12 }}
+        {{- end }}

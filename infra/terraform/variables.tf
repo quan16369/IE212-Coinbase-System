@@ -33,6 +33,36 @@ variable "create_jenkins_key" {
   default     = false
 }
 
+variable "raw_data_bucket_name" {
+  description = "Optional globally unique GCS bucket name for raw Kafka events."
+  type        = string
+  default     = null
+}
+
+variable "raw_data_retention_days" {
+  description = "Days to retain raw Parquet objects."
+  type        = number
+  default     = 30
+}
+
+variable "raw_data_bucket_force_destroy" {
+  description = "Delete raw objects with the bucket during terraform destroy. Suitable for this demo environment."
+  type        = bool
+  default     = true
+}
+
+variable "raw_data_sink_service_account_id" {
+  description = "GCP service account used by the GKE raw-data sink."
+  type        = string
+  default     = "raw-data-sink"
+}
+
+variable "raw_data_replay_service_account_id" {
+  description = "GCP service account used by the GKE raw-data replay workflow."
+  type        = string
+  default     = "raw-data-replay"
+}
+
 variable "labels" {
   description = "Labels applied to supported resources."
   type        = map(string)

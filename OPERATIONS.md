@@ -1,5 +1,132 @@
 # Operations
 
+## Jenkins full E2E and automatic rollback
+
+For GKE deployments, Jenkins runs a deployment transaction:
+
+```text
+record current Bento Helm revision
+-> deploy Bento
+-> Bento in-cluster smoke
+-> Kafka/validation/feature-platform streaming E2E
+-> inference/governance full-stack E2E
+-> optional public ingress smoke
+```
+
+If deployment or any enabled smoke test fails, Jenkins automatically rolls
+Bento back to the previously recorded Helm revision. A failed first deployment
+with no previous revision is uninstalled.
+
+Run the same transaction manually:
+
+```bash
+RUN_FULL_E2E_AFTER_DEPLOY=true make gke-deploy-bento-safe
+```
+
+In Jenkins, enable:
+
+```text
+DEPLOY_GKE=true
+RUN_FULL_E2E_AFTER_DEPLOY=true
+```
+
+## Start a workday after full cleanup
+
+Create only Terraform-managed GCP resources and refresh kubeconfig:
+
+```bash
+make gke-workday-start
+```
+
+The startup script imports an existing `coinbase-mlops` Artifact Registry
+repository or GKE cluster when either resource exists in GCP but is missing
+from the local Terraform state. This prevents `409 already exists` failures
+after an interrupted create or a lost local state entry.
+
+Create infrastructure, rebuild/push all application images, and deploy the
+application stack:
+
+```bash
+DEPLOY_SERVICES=true make gke-workday-start
+```
+
+Include Prometheus/Grafana, Loki, and Tempo only when they are needed:
+
+```bash
+DEPLOY_SERVICES=true INSTALL_OBSERVABILITY=true make gke-workday-start
+```
+
+## Raw-data replay and automatic model promotion
+
+Raw Kafka events are archived as Parquet in GCS with their source Kafka topic,
+partition, and offset. The replay workflow is suspended by default. When run,
+it reads Parquet objects, publishes records to `coin-data-replay`, and stores a
+high-watermark checkpoint per source partition in GCS. Running the same replay
+ID again does not publish offsets that were already restored.
+
+```bash
+make raw-data-replay-build
+make raw-data-replay-push
+terraform -chdir=infra/terraform apply
+make raw-data-replay-deploy
+RAW_DATA_REPLAY_ID=incident-2026-06-11 make raw-data-replay-run
+```
+
+Promote the latest registered MLflow model only when it passes the configured
+return R2, direction accuracy, and naive-baseline improvement gates, then roll
+out BentoML using the `champion` alias:
+
+```bash
+MLFLOW_TRACKING_URI=http://localhost:5000 make mlops-validate-promote-deploy
+```
+
+## Streaming, training, and outcome pipeline
+
+The production path is:
+
+```text
+Coinbase -> coin-data-model -> Data Validation -> coin-data-validated
+-> Feature Platform (Redis + PostgreSQL) -> model training / inference
+-> governance decisions + outcomes
+```
+
+Deploy in dependency order:
+
+```bash
+make streaming-platform-deploy
+make feature-platform-deploy
+make data-validation-deploy
+make model-training-deploy
+make gke-deploy-bento
+make inference-orchestrator-deploy
+```
+
+Run one training job and inspect MLflow:
+
+```bash
+make model-training-run
+kubectl -n model-training logs -l job-name=<job-name> --tail=200
+kubectl -n model-training port-forward svc/mlflow 5000:5000
+```
+
+Run the in-cluster validation gate after training:
+
+```bash
+make model-validation-run
+kubectl -n model-training logs job/<validation-job-name>
+```
+
+The validation Job promotes the newest registered version to `champion` only
+when it beats the naive MAE/RMSE baseline, has non-negative return R2, and
+meets the direction-accuracy threshold. A rejected candidate exits non-zero
+and leaves the current champion unchanged.
+
+Validate the Kafka-to-feature-store path:
+
+```bash
+bash scripts/smoke_streaming_e2e.sh
+```
+
 ## GKE full demo quick start and shutdown
 
 Use this section when the whole GKE demo was deleted yesterday and you want to start from zero again. It creates the Terraform-managed GCP resources, pushes images, deploys the internal services, exposes the inference orchestrator as the public API, and gives the shutdown commands to avoid leaving billable resources running.
@@ -195,6 +322,50 @@ The manifest is written to:
 
 ```text
 artifacts/mlops/data_version_manifest.json
+```
+
+### Raw Streaming Archive on GCS
+
+Kafka remains the realtime transport. PostgreSQL remains the offline feature
+store. The raw-data sink independently consumes `coin-data-model` and writes
+immutable Snappy-compressed Parquet batches to GCS:
+
+```text
+gs://BUCKET/raw/topic=coin-data-model/date=YYYY-MM-DD/hour=HH/part-*.parquet
+```
+
+The sink uses at-least-once delivery: it uploads a Parquet batch before
+committing Kafka offsets. Each row includes `_kafka_topic`,
+`_kafka_partition`, `_kafka_offset`, and `_archived_at` so replay jobs can
+deduplicate records. The default flush policy is 1000 events or 5 minutes.
+
+Provision the bucket and keyless Workload Identity permissions:
+
+```bash
+make terraform-plan
+terraform -chdir=infra/terraform apply
+```
+
+Build and push the sink:
+
+```bash
+make raw-data-sink-build
+IMAGE_TAG="$(git rev-parse --short HEAD)" make raw-data-sink-push
+```
+
+Deploy streaming with the raw archive enabled:
+
+```bash
+RAW_DATA_SINK_ENABLED=true \
+RAW_DATA_BUCKET="$(terraform -chdir=infra/terraform output -raw raw_data_bucket_name)" \
+RAW_DATA_SINK_GCP_SERVICE_ACCOUNT="$(terraform -chdir=infra/terraform output -raw raw_data_sink_service_account_email)" \
+make streaming-platform-deploy
+```
+
+Verify Parquet objects:
+
+```bash
+make raw-data-sink-smoke
 ```
 
 Start Airflow locally for orchestration:

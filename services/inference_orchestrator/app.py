@@ -5,6 +5,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import sqlite3
 from tempfile import NamedTemporaryFile
 from threading import Lock
 from time import perf_counter
@@ -31,6 +32,7 @@ ALERT_HISTORY_LIMIT = int(os.environ.get("ALERT_HISTORY_LIMIT", "200"))
 ALERT_INDEX_PATH = Path(os.environ.get("ALERT_INDEX_PATH", "/data/alerts.jsonl"))
 GOVERNANCE_HISTORY_LIMIT = int(os.environ.get("GOVERNANCE_HISTORY_LIMIT", "1000"))
 GOVERNANCE_INDEX_PATH = Path(os.environ.get("GOVERNANCE_INDEX_PATH", "/data/governance_decisions.jsonl"))
+OUTCOME_DB_PATH = Path(os.environ.get("OUTCOME_DB_PATH", "/data/outcomes.db"))
 HTTP_TIMEOUT_SECONDS = float(os.environ.get("ORCHESTRATOR_HTTP_TIMEOUT_SECONDS", "30"))
 _alert_lock = Lock()
 _governance_lock = Lock()
@@ -84,6 +86,12 @@ class GovernanceDecisionRecord(BaseModel):
     operational_health: dict[str, str]
     previous_hash: str | None = None
     record_hash: str
+
+
+class OutcomeRecord(BaseModel):
+    decision_id: str
+    observed_at: datetime
+    actual_close: float = Field(gt=0)
 
 
 @app.get("/readyz")
@@ -172,6 +180,42 @@ def governance_integrity() -> dict[str, Any]:
     decisions = _read_governance_records()
     valid, broken_at = _verify_governance_chain(decisions)
     return {"valid": valid, "record_count": len(decisions), "broken_at": broken_at}
+
+
+@app.post("/outcomes")
+def record_outcome(outcome: OutcomeRecord) -> dict[str, Any]:
+    decision = get_governance_decision(outcome.decision_id)
+    predicted_close = decision.get("decision", {}).get("predicted_close")
+    if predicted_close is None:
+        raise HTTPException(status_code=409, detail="Decision does not contain predicted_close")
+    error = float(outcome.actual_close) - float(predicted_close)
+    row = {
+        **outcome.model_dump(mode="json"),
+        "symbol": decision["symbol"],
+        "predicted_close": float(predicted_close),
+        "absolute_error": abs(error),
+        "percentage_error": abs(error) / float(outcome.actual_close),
+    }
+    _store_outcome(row)
+    return row
+
+
+@app.get("/outcomes")
+def list_outcomes(limit: int = Query(default=50, ge=1, le=1000)) -> dict[str, Any]:
+    rows = _read_outcomes(limit)
+    return {"count": len(rows), "outcomes": rows}
+
+
+@app.get("/outcomes/performance")
+def outcome_performance() -> dict[str, Any]:
+    rows = _read_outcomes(1000)
+    if not rows:
+        return {"count": 0, "mae": None, "mape": None}
+    return {
+        "count": len(rows),
+        "mae": sum(row["absolute_error"] for row in rows) / len(rows),
+        "mape": sum(row["percentage_error"] for row in rows) / len(rows),
+    }
 
 
 @app.get("/orchestrate/latest/{symbol}")
@@ -392,3 +436,49 @@ def _verify_governance_chain(records: list[dict[str, Any]]) -> tuple[bool, str |
             return False, record.get("decision_id")
         previous_hash = record.get("record_hash")
     return True, None
+
+
+def _outcome_connection() -> sqlite3.Connection:
+    OUTCOME_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(OUTCOME_DB_PATH)
+    connection.row_factory = sqlite3.Row
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS outcomes (
+          decision_id TEXT PRIMARY KEY,
+          observed_at TEXT NOT NULL,
+          symbol TEXT NOT NULL,
+          actual_close REAL NOT NULL,
+          predicted_close REAL NOT NULL,
+          absolute_error REAL NOT NULL,
+          percentage_error REAL NOT NULL
+        )
+        """
+    )
+    return connection
+
+
+def _store_outcome(row: dict[str, Any]) -> None:
+    with _outcome_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO outcomes VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(decision_id) DO UPDATE SET
+              observed_at=excluded.observed_at,
+              actual_close=excluded.actual_close,
+              absolute_error=excluded.absolute_error,
+              percentage_error=excluded.percentage_error
+            """,
+            tuple(row[key] for key in (
+                "decision_id", "observed_at", "symbol", "actual_close",
+                "predicted_close", "absolute_error", "percentage_error",
+            )),
+        )
+
+
+def _read_outcomes(limit: int) -> list[dict[str, Any]]:
+    with _outcome_connection() as connection:
+        rows = connection.execute(
+            "SELECT * FROM outcomes ORDER BY observed_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+    return [dict(row) for row in rows]

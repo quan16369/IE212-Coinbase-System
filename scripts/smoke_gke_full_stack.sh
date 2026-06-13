@@ -1,13 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PORT_FORWARD_PID=""
+cleanup() {
+  if [[ -n "$PORT_FORWARD_PID" ]]; then
+    kill "$PORT_FORWARD_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
 if [[ -z "${INFERENCE_ORCHESTRATOR_URL:-}" ]]; then
-  INFERENCE_ORCHESTRATOR_URL="$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}')"
+  INFERENCE_ORCHESTRATOR_URL="$(kubectl -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='http://{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
 fi
 
 if [[ -z "$INFERENCE_ORCHESTRATOR_URL" || "$INFERENCE_ORCHESTRATOR_URL" == "http://" ]]; then
-  echo "Inference orchestrator public URL is not ready." >&2
-  exit 1
+  LOCAL_PORT="${INFERENCE_ORCHESTRATOR_SMOKE_PORT:-18091}"
+  kubectl -n model-serving port-forward svc/inference-orchestrator "$LOCAL_PORT:80" >/tmp/inference-orchestrator-smoke-port-forward.log 2>&1 &
+  PORT_FORWARD_PID=$!
+  INFERENCE_ORCHESTRATOR_URL="http://localhost:$LOCAL_PORT"
+  for _ in $(seq 1 30); do
+    if curl -fsS "$INFERENCE_ORCHESTRATOR_URL/readyz" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 2
+  done
+  curl -fsS "$INFERENCE_ORCHESTRATOR_URL/readyz" >/dev/null
 fi
 
 echo "Testing public inference orchestrator at $INFERENCE_ORCHESTRATOR_URL"

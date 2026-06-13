@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: coinbase-model-training
+spec:
+  schedule: {{ .Values.training.schedule | quote }}
+  suspend: {{ .Values.training.suspend }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: training
+              image: "{{ .Values.training.image.repository }}:{{ .Values.training.image.tag }}"
+              imagePullPolicy: {{ .Values.training.image.pullPolicy }}
+              env:
+                - name: FEATURE_POSTGRES_DSN
+                  value: {{ .Values.training.featurePostgresDsn | quote }}
+                - name: MLFLOW_TRACKING_URI
+                  value: http://mlflow:5000
+                - name: MLOPS_TRAINING_SYMBOL
+                  value: {{ .Values.training.symbol | quote }}
+                - name: MLOPS_HORIZON
+                  value: {{ .Values.training.horizon | quote }}
+                - name: MLOPS_FREQ_MINUTES
+                  value: {{ .Values.training.freqMinutes | quote }}
+                - name: MLOPS_TRAINING_CSV
+                  value: /tmp/feature-store-training.csv
+                - name: MLOPS_MODEL_OUTPUT
+                  value: /tmp/coinbase_ml_model.joblib
+                - name: MLOPS_MIN_ROWS
+                  value: {{ .Values.training.minRows | quote }}
+                - name: MLFLOW_EXPERIMENT_NAME
+                  value: coinbase-price-forecasting
+                - name: MLFLOW_REGISTERED_MODEL_NAME
+                  value: coinbase-price-lightgbm
+              resources:
+                {{- toYaml .Values.training.resources | nindent 16 }}

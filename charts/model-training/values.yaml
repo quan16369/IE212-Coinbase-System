@@ -1,0 +1,48 @@
+namespace: model-training
+
+mlflow:
+  image: ghcr.io/mlflow/mlflow:v3.12.0
+  storageSize: 2Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 2Gi
+
+training:
+  image:
+    repository: asia-southeast1-docker.pkg.dev/PROJECT_ID/coinbase-mlops/coinbase-model-training
+    tag: dev
+    pullPolicy: Always
+  schedule: "0 2 * * *"
+  symbol: BTC-USD
+  horizon: 4
+  freqMinutes: 5
+  minRows: 50
+  suspend: false
+  featurePostgresDsn: postgresql://feature_user:feature_password@feature-platform-postgres.feature-platform.svc.cluster.local:5432/feature_store
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+validation:
+  schedule: "15 2 * * *"
+  modelName: coinbase-price-lightgbm
+  alias: champion
+  minReturnR2: "0"
+  minDirectionAccuracy: "0.5"
+  minMaeImprovementVsNaive: "0"
+  minRmseImprovementVsNaive: "0"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi

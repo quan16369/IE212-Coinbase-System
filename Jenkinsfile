@@ -31,10 +31,12 @@ pipeline {
     booleanParam(name: 'TRAIN_MLOPS_MODEL', defaultValue: false, description: 'Train the CPU ML model during this build.')
     string(name: 'MLOPS_TRAINING_CSV', defaultValue: '', description: 'Optional override. If empty, Jenkins uses MLOPS_TRAINING_CSV from .env.')
     booleanParam(name: 'PROMOTE_MODEL', defaultValue: false, description: 'Promote an MLflow registered model version to an alias.')
-    string(name: 'MODEL_VERSION', defaultValue: '', description: 'Required when PROMOTE_MODEL=true. Example: 4')
+    booleanParam(name: 'AUTO_PROMOTE_AFTER_TRAIN', defaultValue: true, description: 'Validate and promote the newest registered model after a successful training stage.')
+    string(name: 'MODEL_VERSION', defaultValue: '', description: 'Optional model version. Empty promotes the newest version that passes validation gates.')
     string(name: 'MODEL_ALIAS', defaultValue: 'champion', description: 'MLflow model alias to update.')
     booleanParam(name: 'DEPLOY_BENTO', defaultValue: false, description: 'Restart the BentoML predictor service after build or promotion.')
     booleanParam(name: 'DEPLOY_GKE', defaultValue: false, description: 'Deploy the BentoML predictor to GKE with Helm.')
+    booleanParam(name: 'RUN_FULL_E2E_AFTER_DEPLOY', defaultValue: true, description: 'Run private-cluster full end-to-end smoke tests after GKE deploy.')
     booleanParam(name: 'ENABLE_BENTO_INGRESS', defaultValue: false, description: 'Expose the BentoML predictor through the nginx ingress controller.')
     booleanParam(name: 'SMOKE_GKE_PUBLIC', defaultValue: false, description: 'Smoke test the public nginx ingress endpoint after GKE deploy.')
     string(name: 'BENTO_PUBLIC_URL', defaultValue: '', description: 'Optional public Bento URL for smoke tests. If empty, Jenkins uses the nginx LoadBalancer address.')
@@ -274,17 +276,11 @@ pipeline {
 
     stage('Promote Model') {
       when {
-        expression { return params.PROMOTE_MODEL }
+        expression { return params.PROMOTE_MODEL || (params.TRAIN_MLOPS_MODEL && params.AUTO_PROMOTE_AFTER_TRAIN) }
       }
       steps {
         dir("${env.WORKSPACE}") {
           sh '''
-            if [ -z "$MODEL_VERSION" ]; then
-              echo "MODEL_VERSION is required when PROMOTE_MODEL=true."
-              echo "Example: 4"
-              exit 1
-            fi
-
             set -a
             . "./$ENV_FILE"
             set +a
@@ -294,8 +290,14 @@ pipeline {
             python -m pip install --upgrade pip
             python -m pip install -r mlops/requirements.txt
 
-            MODEL_VERSION="$MODEL_VERSION" MODEL_ALIAS="$MODEL_ALIAS" python scripts/promote_mlflow_model.py
+            MODEL_VALIDATION_REPORT=artifacts/mlops/model_validation_report.json \
+              MODEL_VERSION="$MODEL_VERSION" MODEL_ALIAS="$MODEL_ALIAS" python scripts/promote_mlflow_model.py
           '''
+        }
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'artifacts/mlops/model_validation_report.json', fingerprint: true, allowEmptyArchive: true
         }
       }
     }
@@ -314,7 +316,7 @@ pipeline {
       }
     }
 
-    stage('Deploy GKE') {
+    stage('Deploy GKE + E2E + Rollback') {
       when {
         expression { return params.DEPLOY_GKE }
       }
@@ -389,14 +391,17 @@ pipeline {
                 export BENTO_PUBLIC_URL="$PARAM_BENTO_PUBLIC_URL"
               fi
 
+              if [ "$PROMOTE_MODEL" = "true" ] || { [ "$TRAIN_MLOPS_MODEL" = "true" ] && [ "$AUTO_PROMOTE_AFTER_TRAIN" = "true" ]; }; then
+                export MLOPS_MODEL_URI="models:/${MLFLOW_REGISTERED_MODEL_NAME:-coinbase-price-lightgbm}@${MODEL_ALIAS:-champion}"
+                export MLFLOW_TRACKING_URI="${BENTO_MLFLOW_TRACKING_URI:-http://mlflow.model-training.svc.cluster.local:5000}"
+              fi
+
               gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"
               gcloud config set project "$GCP_PROJECT_ID"
               gcloud container clusters get-credentials "$GKE_CLUSTER" --region="$GKE_REGION"
-              bash scripts/deploy_bento_gke.sh
-              bash scripts/smoke_bento_gke.sh
-              if [ "$SMOKE_GKE_PUBLIC" = "true" ]; then
-                bash scripts/smoke_bento_public.sh
-              fi
+              export RUN_FULL_E2E_AFTER_DEPLOY="$RUN_FULL_E2E_AFTER_DEPLOY"
+              export SMOKE_GKE_PUBLIC="$SMOKE_GKE_PUBLIC"
+              bash scripts/deploy_bento_with_rollback.sh
               kubectl -n app get pods
               kubectl -n app get svc
             '''

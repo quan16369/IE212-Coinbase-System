@@ -60,3 +60,26 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+        {{- if .Values.kafkaWorker.enabled }}
+        - name: kafka-worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "services.data_validation.kafka_worker"]
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ .Values.kafkaWorker.bootstrapServers | quote }}
+            - name: KAFKA_INPUT_TOPIC
+              value: {{ .Values.kafkaWorker.inputTopic | quote }}
+            - name: KAFKA_VALIDATED_TOPIC
+              value: {{ .Values.routing.validatedTarget | quote }}
+            - name: KAFKA_QUALITY_TOPIC
+              value: {{ .Values.routing.qualityTarget | quote }}
+            - name: KAFKA_CONSUMER_GROUP
+              value: {{ .Values.kafkaWorker.consumerGroup | quote }}
+            - name: VALIDATION_IDEMPOTENCY_REDIS_URL
+              value: {{ .Values.idempotency.redisUrl | quote }}
+            - name: VALIDATION_IDEMPOTENCY_TTL_SECONDS
+              value: {{ .Values.idempotency.ttlSeconds | quote }}
+          resources:
+            {{- toYaml .Values.kafkaWorker.resources | nindent 12 }}
+        {{- end }}
