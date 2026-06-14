@@ -33,6 +33,7 @@ training:
 
 validation:
   schedule: "15 2 * * *"
+  suspend: false
   modelName: coinbase-price-lightgbm
   alias: champion
   minReturnR2: "0"

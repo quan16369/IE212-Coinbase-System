@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 SCHEMA_VERSION = "1.0"
@@ -29,11 +29,16 @@ PayloadT = TypeVar("PayloadT", bound=BaseModel)
 
 
 class EventEnvelope(BaseModel, Generic[PayloadT]):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
     event_id: str = Field(min_length=1)
     schema_version: str = SCHEMA_VERSION
     event_type: str = Field(min_length=1)
     timestamp: datetime
     source: str = Field(min_length=1)
+    kafka_topic: str | None = Field(default=None, alias="_kafka_topic")
+    kafka_partition: int | None = Field(default=None, alias="_kafka_partition", ge=0)
+    kafka_offset: int | None = Field(default=None, alias="_kafka_offset", ge=0)
     payload: PayloadT
 
     @field_validator("schema_version")

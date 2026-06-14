@@ -16,9 +16,48 @@ variable "artifact_repository_id" {
 }
 
 variable "gke_cluster_name" {
-  description = "GKE Autopilot cluster name."
+  description = "GKE Standard cluster name."
   type        = string
   default     = "coinbase-mlops"
+}
+
+variable "gke_node_zones" {
+  description = "Zones used by the regional GKE Standard node pool."
+  type        = list(string)
+  default = [
+    "asia-southeast1-a",
+    "asia-southeast1-b",
+  ]
+}
+
+variable "gke_machine_type" {
+  description = "Machine type for application nodes."
+  type        = string
+  default     = "e2-standard-4"
+}
+
+variable "gke_node_disk_size_gb" {
+  description = "Boot disk size for each GKE node."
+  type        = number
+  default     = 50
+}
+
+variable "gke_min_nodes_per_zone" {
+  description = "Minimum nodes per configured zone."
+  type        = number
+  default     = 1
+}
+
+variable "gke_max_nodes_per_zone" {
+  description = "Maximum nodes per configured zone."
+  type        = number
+  default     = 2
+}
+
+variable "gke_deletion_protection" {
+  description = "Protect the cluster from accidental deletion. Keep false for the daily demo teardown workflow."
+  type        = bool
+  default     = false
 }
 
 variable "jenkins_service_account_id" {

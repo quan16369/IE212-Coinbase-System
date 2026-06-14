@@ -4,6 +4,7 @@ set -euo pipefail
 ENV_FILE="${ENV_FILE:-.env}"
 DEPLOY_SERVICES="${DEPLOY_SERVICES:-false}"
 INSTALL_OBSERVABILITY="${INSTALL_OBSERVABILITY:-false}"
+ENABLE_PUBLIC_INGRESS="${ENABLE_PUBLIC_INGRESS:-false}"
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a
@@ -59,12 +60,29 @@ COMPOSE_PROFILES=mlops docker compose --env-file "$ENV_FILE" build bento-price-p
 IMAGE_TAG="$IMAGE_TAG" make streaming-platform-push raw-data-sink-push raw-data-replay-push
 IMAGE_TAG="$IMAGE_TAG" make data-validation-push feature-platform-push model-training-push inference-orchestrator-push mlops-push-bento
 
-RAW_DATA_REPLAY_ID="${RAW_DATA_REPLAY_ID:-recovery-default}" make raw-data-replay-deploy
+RAW_DATA_BUCKET="${RAW_DATA_BUCKET:-$(terraform -chdir=infra/terraform output -raw raw_data_bucket_name)}"
+RAW_DATA_SINK_GCP_SERVICE_ACCOUNT="${RAW_DATA_SINK_GCP_SERVICE_ACCOUNT:-$(terraform -chdir=infra/terraform output -raw raw_data_sink_service_account_email)}"
+RAW_DATA_REPLAY_GCP_SERVICE_ACCOUNT="${RAW_DATA_REPLAY_GCP_SERVICE_ACCOUNT:-$(terraform -chdir=infra/terraform output -raw raw_data_replay_service_account_email)}"
+
+RAW_DATA_SINK_ENABLED=true \
+RAW_DATA_REPLAY_ENABLED=true \
+RAW_DATA_BUCKET="$RAW_DATA_BUCKET" \
+RAW_DATA_SINK_GCP_SERVICE_ACCOUNT="$RAW_DATA_SINK_GCP_SERVICE_ACCOUNT" \
+RAW_DATA_REPLAY_GCP_SERVICE_ACCOUNT="$RAW_DATA_REPLAY_GCP_SERVICE_ACCOUNT" \
+RAW_DATA_REPLAY_ID="${RAW_DATA_REPLAY_ID:-recovery-default}" \
+  make streaming-platform-deploy
 make feature-platform-deploy data-validation-deploy model-training-deploy
-make gke-deploy-bento inference-orchestrator-deploy
+RUN_FULL_E2E_AFTER_DEPLOY=false make gke-deploy-bento-safe
+if [[ "$ENABLE_PUBLIC_INGRESS" == "true" ]]; then
+  make gke-install-ingress-nginx
+  INFERENCE_ORCHESTRATOR_INGRESS_ENABLED=true make inference-orchestrator-deploy
+else
+  make inference-orchestrator-deploy
+fi
 
 if [[ "$INSTALL_OBSERVABILITY" == "true" ]]; then
   make gke-install-monitoring gke-install-logging gke-install-tracing
 fi
 
 kubectl get pods -A
+RUN_REPLAY_CHECK=false make production-e2e-smoke

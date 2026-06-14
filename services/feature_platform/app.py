@@ -23,6 +23,9 @@ Candle = CandlePayload
 class FeatureRecord(BaseModel):
     event_id: str | None = None
     schema_version: str = SCHEMA_VERSION
+    kafka_topic: str | None = None
+    kafka_partition: int | None = None
+    kafka_offset: int | None = None
     timestamp: datetime
     symbol: str
     open: float
@@ -114,6 +117,12 @@ class FeatureStore(Protocol):
     def claim_event(self, event_id: str, schema_version: str, event_timestamp: datetime) -> bool:
         ...
 
+    def claim_kafka_offset(self, topic: str, partition: int, offset: int) -> bool:
+        ...
+
+    def idempotency_status(self) -> dict[str, Any]:
+        ...
+
     def latest(self, symbol: str) -> FeatureRecord | None:
         ...
 
@@ -190,13 +199,29 @@ def ingest(payload: IngestRequest) -> IngestResponse:
     store.save_batch(batch_id, payload_hash, payload.source, data_version)
 
     for event in sorted(events, key=lambda item: item.timestamp):
+        kafka_topic = event.kafka_topic
+        kafka_partition = event.kafka_partition
+        kafka_offset = event.kafka_offset
+        if kafka_topic and kafka_partition is not None and kafka_offset is not None:
+            if not store.claim_kafka_offset(kafka_topic, kafka_partition, kafka_offset):
+                duplicate_event_ids.append(event.event_id)
+                continue
         if not store.claim_event(event.event_id, event.schema_version, event.timestamp):
             duplicate_event_ids.append(event.event_id)
             continue
         record = event.payload
         history = _history_candles(record.symbol)
         previous = history[-1] if history else None
-        feature = _build_feature(record, history, previous, event.event_id, event.schema_version)
+        feature = _build_feature(
+            record,
+            history,
+            previous,
+            event.event_id,
+            event.schema_version,
+            kafka_topic,
+            kafka_partition,
+            kafka_offset,
+        )
 
         store.save_feature(batch_id, feature)
         latest[record.symbol] = feature
@@ -223,6 +248,11 @@ def latest(symbol: str) -> FeatureRecord:
     if feature is None:
         raise HTTPException(status_code=404, detail=f"No features for symbol {normalized}")
     return feature
+
+
+@app.get("/features/idempotency")
+def idempotency_status() -> dict[str, Any]:
+    return store.idempotency_status()
 
 
 @app.get("/features/history/{symbol}", response_model=list[FeatureRecord])
@@ -327,6 +357,7 @@ class MemoryFeatureStore:
         self.features: dict[str, Deque[FeatureRecord]] = defaultdict(lambda: deque(maxlen=MAX_HISTORY))
         self.batches: dict[str, dict[str, Any]] = {}
         self.processed_event_ids: set[str] = set()
+        self.processed_offsets: set[str] = set()
         self.event_lock = Lock()
 
     def save_batch(self, batch_id: str, payload_hash: str, source: str, data_version: str) -> None:
@@ -347,6 +378,22 @@ class MemoryFeatureStore:
                 return False
             self.processed_event_ids.add(event_id)
             return True
+
+    def claim_kafka_offset(self, topic: str, partition: int, offset: int) -> bool:
+        key = _kafka_offset_key(topic, partition, offset)
+        with self.event_lock:
+            if key in self.processed_offsets:
+                return False
+            self.processed_offsets.add(key)
+            return True
+
+    def idempotency_status(self) -> dict[str, Any]:
+        with self.event_lock:
+            return {
+                "store": self.online_name,
+                "processed_event_ids": len(self.processed_event_ids),
+                "processed_kafka_offsets": len(self.processed_offsets),
+            }
 
     def latest(self, symbol: str) -> FeatureRecord | None:
         if not self.features[symbol]:
@@ -396,6 +443,17 @@ class RedisPostgresFeatureStore:
                   schema_version TEXT NOT NULL,
                   event_timestamp TIMESTAMPTZ NOT NULL,
                   processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS processed_kafka_offsets (
+                  topic TEXT NOT NULL,
+                  partition INTEGER NOT NULL,
+                  offset_value BIGINT NOT NULL,
+                  processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                  PRIMARY KEY (topic, partition, offset_value)
                 )
                 """
             )
@@ -455,6 +513,31 @@ class RedisPostgresFeatureStore:
                 (event_id, schema_version, event_timestamp),
             )
             return cursor.fetchone() is not None
+
+    def claim_kafka_offset(self, topic: str, partition: int, offset: int) -> bool:
+        with self.pg.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO processed_kafka_offsets (topic, partition, offset_value)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (topic, partition, offset_value) DO NOTHING
+                RETURNING topic
+                """,
+                (topic, partition, offset),
+            )
+            return cursor.fetchone() is not None
+
+    def idempotency_status(self) -> dict[str, Any]:
+        with self.pg.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM processed_feature_events")
+            event_count = int(cursor.fetchone()[0])
+            cursor.execute("SELECT count(*) FROM processed_kafka_offsets")
+            offset_count = int(cursor.fetchone()[0])
+        return {
+            "store": self.offline_name,
+            "processed_event_ids": event_count,
+            "processed_kafka_offsets": offset_count,
+        }
 
     def latest(self, symbol: str) -> FeatureRecord | None:
         raw = self.redis.get(_latest_key(symbol))
@@ -534,6 +617,9 @@ def _build_feature(
     previous: Candle | None,
     event_id: str,
     schema_version: str,
+    kafka_topic: str | None = None,
+    kafka_partition: int | None = None,
+    kafka_offset: int | None = None,
 ) -> FeatureRecord:
     if previous is None:
         returns = 0.0
@@ -547,6 +633,9 @@ def _build_feature(
     return FeatureRecord(
         event_id=event_id,
         schema_version=schema_version,
+        kafka_topic=kafka_topic,
+        kafka_partition=kafka_partition,
+        kafka_offset=kafka_offset,
         timestamp=record.timestamp,
         symbol=record.symbol,
         open=record.open,
@@ -572,6 +661,10 @@ def _payload_hash(payload: IngestRequest) -> str:
 
 def _latest_key(symbol: str) -> str:
     return f"features:latest:{symbol}"
+
+
+def _kafka_offset_key(topic: str, partition: int, offset: int) -> str:
+    return f"{topic}:{partition}:{offset}"
 
 
 def _rolling_mean(values: list[float], window: int) -> float:

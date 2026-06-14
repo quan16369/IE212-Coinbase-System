@@ -29,8 +29,7 @@ bash scripts/deploy_bento_gke.sh
 bash scripts/smoke_bento_gke.sh
 
 if [[ "$RUN_FULL_E2E" == "true" ]]; then
-  bash scripts/smoke_streaming_e2e.sh
-  bash scripts/smoke_gke_full_stack.sh
+  bash scripts/smoke_production_path.sh
 fi
 
 if [[ "$RUN_PUBLIC_SMOKE" == "true" ]]; then

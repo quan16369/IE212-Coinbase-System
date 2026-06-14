@@ -1,5 +1,142 @@
 # Operations
 
+## Production Path Runbook
+
+### GKE Standard topology
+
+Terraform provisions a regional GKE Standard cluster with:
+
+- two zones;
+- one `e2-standard-4` node per zone minimum;
+- cluster autoscaling up to two nodes per zone;
+- a dedicated least-privilege node service account;
+- Workload Identity, Dataplane V2, Shielded Nodes, auto-repair and auto-upgrade;
+- Container-Optimized OS with `containerd`.
+
+Autopilot cannot be converted to Standard in place. Recreate the cluster:
+
+```bash
+make terraform-destroy
+make terraform-init
+make terraform-plan
+terraform -chdir=infra/terraform apply
+```
+
+Then deploy the complete stack with `make gke-workday-start`. For a long-lived
+production cluster set `gke_deletion_protection = true`; keep it false for the
+daily teardown workflow.
+
+The complete GKE path is:
+
+```text
+Coinbase -> Kafka -> raw Parquet/GCS
+                  -> validation -> validated/quality topics
+                  -> feature platform (Redis/PostgreSQL)
+                  -> model training/MLflow -> validation gate
+                  -> BentoML -> inference orchestrator
+                  -> governance decisions/outcomes
+```
+
+Start every service and the observability stack:
+
+```bash
+cd /home/quan/projects/Coinbase_Streaming
+git checkout add/ops
+git pull origin add/ops
+gcloud config set project awesome-pilot-494017-u5
+
+DEPLOY_SERVICES=true INSTALL_OBSERVABILITY=true make gke-workday-start
+```
+
+Add `ENABLE_PUBLIC_INGRESS=true` only when a billable public LoadBalancer is
+required:
+
+```bash
+DEPLOY_SERVICES=true INSTALL_OBSERVABILITY=true ENABLE_PUBLIC_INGRESS=true make gke-workday-start
+```
+
+Verify Kafka routing, feature-store connectivity, offset idempotency, raw GCS
+Parquet, replay checkpoints, inference, governance telemetry, and rollout
+health:
+
+```bash
+make production-e2e-smoke
+```
+
+Skip replay while diagnosing:
+
+```bash
+RUN_REPLAY_CHECK=false make production-e2e-smoke
+```
+
+Train immediately, then validate, promote, deploy, smoke test, and rollback on
+failure:
+
+```bash
+make model-training-run
+RUN_FULL_E2E_AFTER_DEPLOY=true make mlops-validate-promote-deploy
+```
+
+Expose only the inference orchestrator:
+
+```bash
+make gke-install-ingress-nginx
+make inference-orchestrator-ingress
+make inference-orchestrator-public-url
+make inference-orchestrator-smoke-public
+```
+
+For external production, configure a hostname and TLS. Kafka, Redis,
+PostgreSQL, MLflow, feature platform, and Bento remain private.
+
+```bash
+INFERENCE_ORCHESTRATOR_INGRESS_ENABLED=true \
+INFERENCE_ORCHESTRATOR_INGRESS_HOST=api.example.com \
+INFERENCE_ORCHESTRATOR_INGRESS_TLS_ENABLED=true \
+INFERENCE_ORCHESTRATOR_INGRESS_TLS_SECRET=coinbase-api-tls \
+  make inference-orchestrator-deploy
+```
+
+Open observability tools:
+
+```bash
+make gke-monitoring-grafana
+make gke-monitoring-prometheus
+make gke-monitoring-alertmanager
+make gke-logging-loki
+make gke-tracing-tempo
+```
+
+Prometheus rules cover Kafka, producer, raw sink, validation, feature
+platform, MLflow/training, Bento, and inference. Set
+`ALERTMANAGER_WEBHOOK_URL` during monitoring installation for a real receiver.
+
+Replay raw Parquet with GCS offset checkpoints:
+
+```bash
+make raw-data-replay-run
+```
+
+Stop all billable resources:
+
+```bash
+make gke-uninstall-ingress-nginx
+make gke-uninstall-monitoring
+make gke-uninstall-logging
+make gke-uninstall-tracing
+
+make inference-orchestrator-delete
+make model-training-delete
+make data-validation-delete
+make feature-platform-delete
+make streaming-platform-delete
+make gke-delete-bento
+
+make terraform-destroy
+```
+
+After cluster deletion, check for orphaned `pvc-*` Compute Engine disks.
+
 ## Jenkins full E2E and automatic rollback
 
 For GKE deployments, Jenkins runs a deployment transaction:

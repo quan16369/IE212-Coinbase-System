@@ -18,6 +18,8 @@ INGRESS_ENABLED="${INFERENCE_ORCHESTRATOR_INGRESS_ENABLED:-}"
 INGRESS_CLASS="${INFERENCE_ORCHESTRATOR_INGRESS_CLASS:-}"
 INGRESS_HOST="${INFERENCE_ORCHESTRATOR_INGRESS_HOST:-}"
 INGRESS_PATH="${INFERENCE_ORCHESTRATOR_INGRESS_PATH:-}"
+INGRESS_TLS_ENABLED="${INFERENCE_ORCHESTRATOR_INGRESS_TLS_ENABLED:-}"
+INGRESS_TLS_SECRET="${INFERENCE_ORCHESTRATOR_INGRESS_TLS_SECRET:-}"
 HELM_TIMEOUT="${HELM_TIMEOUT:-300s}"
 
 if [[ -f "$ENV_FILE" ]]; then
@@ -101,6 +103,14 @@ if [[ -n "$INGRESS_PATH" ]]; then
   HELM_ARGS+=(--set ingress.path="$INGRESS_PATH")
 fi
 
+if [[ -n "$INGRESS_TLS_ENABLED" ]]; then
+  HELM_ARGS+=(--set ingress.tls.enabled="$INGRESS_TLS_ENABLED")
+fi
+
+if [[ -n "$INGRESS_TLS_SECRET" ]]; then
+  HELM_ARGS+=(--set-string ingress.tls.secretName="$INGRESS_TLS_SECRET")
+fi
+
 helm upgrade --install "$HELM_RELEASE" "$HELM_CHART" "${HELM_ARGS[@]}"
 kubectl -n "$NAMESPACE" rollout status deployment/"$HELM_RELEASE" --timeout=180s
 
@@ -113,5 +123,6 @@ echo "Alert persistence: ${ALERT_PERSISTENCE_ENABLED:-chart default}"
 echo "Governance decision telemetry: enabled"
 echo "Ingress enabled: ${INGRESS_ENABLED:-chart default}"
 echo "Ingress path: ${INGRESS_PATH:-chart default}"
+echo "Ingress TLS enabled: ${INGRESS_TLS_ENABLED:-chart default}"
 echo "Test locally with:"
 echo "  kubectl -n $NAMESPACE port-forward svc/inference-orchestrator 8091:80"

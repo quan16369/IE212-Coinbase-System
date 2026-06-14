@@ -46,21 +46,26 @@ def main() -> None:
     consumer, producer = connect()
     for message in consumer:
         raw_event = message.value
+        event_metadata = {
+            "_kafka_topic": message.topic,
+            "_kafka_partition": message.partition,
+            "_kafka_offset": message.offset,
+        }
         try:
             event = CandleEvent.model_validate(raw_event)
             result = validate(ValidationRequest(events=[event]))
             if result.accepted_count:
-                producer.send(VALIDATED_TOPIC, raw_event).get(timeout=30)
+                producer.send(VALIDATED_TOPIC, {**raw_event, **event_metadata}).get(timeout=30)
             elif result.rejected_count:
                 producer.send(
                     QUALITY_TOPIC,
-                    {"event": raw_event, "errors": result.errors, "reason": "validation_failed"},
+                    {"event": raw_event, **event_metadata, "errors": result.errors, "reason": "validation_failed"},
                 ).get(timeout=30)
             consumer.commit()
         except ValidationError as exc:
             producer.send(
                 QUALITY_TOPIC,
-                {"event": raw_event, "errors": exc.errors(), "reason": "schema_invalid"},
+                {"event": raw_event, **event_metadata, "errors": exc.errors(), "reason": "schema_invalid"},
             ).get(timeout=30)
             consumer.commit()
         except Exception:

@@ -15,7 +15,10 @@ ingress:
   enabled: false
   className: nginx
   host: ""
-  path: /orchestrate
+  path: /
+  tls:
+    enabled: false
+    secretName: ""
 
 bento:
   predictUrl: http://bento-price-predictor.app.svc.cluster.local/predict

@@ -392,8 +392,8 @@ pipeline {
               fi
 
               if [ "$PROMOTE_MODEL" = "true" ] || { [ "$TRAIN_MLOPS_MODEL" = "true" ] && [ "$AUTO_PROMOTE_AFTER_TRAIN" = "true" ]; }; then
-                export MLOPS_MODEL_URI="models:/${MLFLOW_REGISTERED_MODEL_NAME:-coinbase-price-lightgbm}@${MODEL_ALIAS:-champion}"
-                export MLFLOW_TRACKING_URI="${BENTO_MLFLOW_TRACKING_URI:-http://mlflow.model-training.svc.cluster.local:5000}"
+                export BENTO_MLOPS_MODEL_URI="models:/${MLFLOW_REGISTERED_MODEL_NAME:-coinbase-price-lightgbm}@${MODEL_ALIAS:-champion}"
+                export BENTO_MLFLOW_TRACKING_URI="${BENTO_MLFLOW_TRACKING_URI:-http://mlflow.model-training.svc.cluster.local:5000}"
               fi
 
               gcloud auth activate-service-account --key-file="$GOOGLE_APPLICATION_CREDENTIALS"

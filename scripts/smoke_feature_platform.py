@@ -35,6 +35,9 @@ def main() -> int:
                 "event_type": "coinbase.candle",
                 "timestamp": (start + timedelta(minutes=5 * index)).isoformat(),
                 "source": "smoke-test",
+                "_kafka_topic": "coin-data-validated",
+                "_kafka_partition": 0,
+                "_kafka_offset": index,
                 "payload": {
                     "timestamp": (start + timedelta(minutes=5 * index)).isoformat(),
                     "symbol": "BTCUSDT",
@@ -56,6 +59,7 @@ def main() -> int:
         latest = request("GET", "/features/latest/BTCUSDT")
         history = request("GET", "/features/history/BTCUSDT?limit=5")
         retraining = request("GET", "/feedback/retraining-signal/BTCUSDT")
+        idempotency = request("GET", "/features/idempotency")
     except urllib.error.URLError as exc:
         print(f"Could not reach feature platform at {BASE_URL}: {exc}", file=sys.stderr)
         return 1
@@ -82,6 +86,7 @@ def main() -> int:
                 "latest": latest,
                 "history_tail": history,
                 "retraining_signal": retraining,
+                "idempotency": idempotency,
             },
             indent=2,
         )

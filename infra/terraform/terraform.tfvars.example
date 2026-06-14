@@ -4,6 +4,17 @@ region     = "asia-southeast1"
 artifact_repository_id = "coinbase-mlops"
 gke_cluster_name       = "coinbase-mlops"
 
+# GKE Standard: regional control plane with one node in each zone at minimum.
+gke_node_zones         = ["asia-southeast1-a", "asia-southeast1-b"]
+gke_machine_type       = "e2-standard-4"
+gke_node_disk_size_gb  = 50
+gke_min_nodes_per_zone = 1
+gke_max_nodes_per_zone = 2
+
+# Set true for a long-lived production cluster. Keep false when using the
+# daily terraform-destroy workflow.
+gke_deletion_protection = false
+
 jenkins_service_account_id = "jenkins-deployer"
 
 # Local demo only. Prefer Workload Identity or another keyless path for production.

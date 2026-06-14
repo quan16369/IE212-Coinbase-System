@@ -183,6 +183,74 @@ additionalPrometheusRulesMap:
               summary: "Model-serving namespace has problem pods"
               description: "There are pods in Failed, Unknown, or Pending phase in namespace model-serving for more than 5 minutes."
 
+  streaming-platform:
+    groups:
+      - name: streaming-platform
+        rules:
+          - alert: KafkaUnavailable
+            expr: kube_statefulset_status_replicas_ready{namespace="data-streaming", statefulset="streaming-platform-kafka"} < 1
+            for: 2m
+            labels:
+              severity: critical
+              service: kafka
+            annotations:
+              summary: "Kafka has no ready replicas"
+              description: "The data-streaming Kafka StatefulSet has had no ready replicas for more than 2 minutes."
+
+          - alert: CoinbaseProducerUnavailable
+            expr: kube_deployment_status_replicas_available{namespace="data-streaming", deployment="streaming-platform-producer"} < 1
+            for: 2m
+            labels:
+              severity: critical
+              service: coinbase-producer
+            annotations:
+              summary: "Coinbase telemetry producer is unavailable"
+              description: "The Coinbase producer has had no available replicas for more than 2 minutes."
+
+          - alert: RawDataSinkUnavailable
+            expr: kube_deployment_status_replicas_available{namespace="data-streaming", deployment="streaming-platform-raw-data-sink"} < 1
+            for: 5m
+            labels:
+              severity: warning
+              service: raw-data-sink
+            annotations:
+              summary: "Raw GCS sink is unavailable"
+              description: "The raw-data sink has had no available replicas for more than 5 minutes."
+
+  model-training:
+    groups:
+      - name: model-training
+        rules:
+          - alert: MLflowUnavailable
+            expr: kube_statefulset_status_replicas_ready{namespace="model-training", statefulset="mlflow"} < 1
+            for: 2m
+            labels:
+              severity: critical
+              service: mlflow
+            annotations:
+              summary: "MLflow is unavailable"
+              description: "The MLflow StatefulSet has had no ready replicas for more than 2 minutes."
+
+          - alert: ModelTrainingJobFailed
+            expr: sum(increase(kube_job_status_failed{namespace="model-training", job_name=~"coinbase-model-training.*"}[24h])) > 0
+            for: 1m
+            labels:
+              severity: warning
+              service: model-training
+            annotations:
+              summary: "Model training job failed"
+              description: "At least one model training job failed during the last 24 hours."
+
+          - alert: ModelValidationJobFailed
+            expr: sum(increase(kube_job_status_failed{namespace="model-training", job_name=~"coinbase-model-validation.*"}[24h])) > 0
+            for: 1m
+            labels:
+              severity: warning
+              service: model-validation
+            annotations:
+              summary: "Model validation gate failed"
+              description: "At least one model validation job failed during the last 24 hours."
+
 alertmanager:
   enabled: true
   config:

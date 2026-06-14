@@ -29,7 +29,7 @@ kafkaWorker:
 
 idempotency:
   cacheSize: 10000
-  redisUrl: ""
+  redisUrl: redis://feature-platform-redis.feature-platform.svc.cluster.local:6379/1
   ttlSeconds: 86400
 
 resources:

@@ -23,6 +23,16 @@ output "gke_region" {
   value       = var.region
 }
 
+output "gke_node_pool_name" {
+  description = "Primary GKE Standard application node pool."
+  value       = google_container_node_pool.application.name
+}
+
+output "gke_node_service_account_email" {
+  description = "Dedicated service account used by GKE Standard nodes."
+  value       = google_service_account.gke_nodes.email
+}
+
 output "jenkins_service_account_email" {
   description = "Jenkins deployer service account email."
   value       = google_service_account.jenkins_deployer.email
