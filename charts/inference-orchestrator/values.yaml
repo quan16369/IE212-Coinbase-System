@@ -11,6 +11,11 @@ service:
   type: ClusterIP
   port: 80
 
+monitoring:
+  enabled: true
+  release: kube-prometheus-stack
+  interval: 15s
+
 ingress:
   enabled: false
   className: nginx
@@ -40,6 +45,7 @@ governance:
   historyLimit: "1000"
   indexPath: /data/governance_decisions.jsonl
   outcomeDbPath: /data/outcomes.db
+  observabilityPostgresDsn: postgresql://feature_user:feature_password@feature-platform-postgres.feature-platform.svc.cluster.local:5432/feature_store
 
 resources:
   requests:

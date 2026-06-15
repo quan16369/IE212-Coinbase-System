@@ -5,8 +5,7 @@ NAMESPACE="${MONITORING_NAMESPACE:-monitoring}"
 RELEASE="${MONITORING_RELEASE:-kube-prometheus-stack}"
 CHART_VERSION="${KUBE_PROMETHEUS_STACK_VERSION:-}"
 VALUES_FILE="${MONITORING_VALUES_FILE:-ops/observability/monitoring/gke/kube-prometheus-stack-values.yaml}"
-DASHBOARD_FILE="${BENTO_DASHBOARD_FILE:-ops/observability/monitoring/gke/dashboards/bento-price-predictor.json}"
-DASHBOARD_CONFIGMAP="${BENTO_DASHBOARD_CONFIGMAP:-bento-price-predictor-dashboard}"
+DASHBOARD_DIR="${MONITORING_DASHBOARD_DIR:-ops/observability/monitoring/gke/dashboards}"
 ALERTMANAGER_WEBHOOK_URL="${ALERTMANAGER_WEBHOOK_URL:-}"
 
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null
@@ -67,13 +66,19 @@ if [[ -n "$ALERTMANAGER_VALUES_FILE" ]]; then
   rm -f "$ALERTMANAGER_VALUES_FILE"
 fi
 
-if [[ -f "$DASHBOARD_FILE" ]]; then
-  kubectl -n "$NAMESPACE" create configmap "$DASHBOARD_CONFIGMAP" \
-    --from-file="$(basename "$DASHBOARD_FILE")=$DASHBOARD_FILE" \
+for dashboard_file in "$DASHBOARD_DIR"/*.json; do
+  [[ -f "$dashboard_file" ]] || continue
+  dashboard_name="$(basename "$dashboard_file" .json | tr '_' '-')"
+  configmap_name="${dashboard_name}-dashboard"
+  kubectl -n "$NAMESPACE" create configmap "$configmap_name" \
+    --from-file="$(basename "$dashboard_file")=$dashboard_file" \
     --dry-run=client \
     -o yaml | kubectl apply -f -
-  kubectl -n "$NAMESPACE" label configmap "$DASHBOARD_CONFIGMAP" grafana_dashboard=1 --overwrite
-fi
+  kubectl -n "$NAMESPACE" label configmap "$configmap_name" grafana_dashboard=1 --overwrite
+done
+
+kubectl -n "$NAMESPACE" rollout restart deploy/"${RELEASE}-grafana"
+kubectl -n "$NAMESPACE" rollout status deploy/"${RELEASE}-grafana" --timeout=5m
 
 kubectl -n "$NAMESPACE" get pods,svc
 
@@ -83,7 +88,7 @@ echo "Open Grafana with:"
 echo "  make gke-monitoring-grafana"
 echo "Then browse: http://localhost:\${PORT:-3000}"
 echo "Default login: admin / admin"
-echo "Dashboard: Coinbase / Bento Price Predictor"
+echo "Dashboards: Coinbase / Bento Price Predictor, Coinbase / Streaming and Predictions"
 if [[ -n "$ALERTMANAGER_WEBHOOK_URL" ]]; then
   echo "Alertmanager receiver: webhook"
 else

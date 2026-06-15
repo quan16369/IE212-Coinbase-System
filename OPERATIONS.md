@@ -1902,9 +1902,31 @@ The monitoring install also provisions a project dashboard:
 
 ```text
 Coinbase / Bento Price Predictor
+Coinbase / Streaming and Predictions
 ```
 
-It contains available/ready replicas, problem pod count, restart trend, recent Bento logs, and warning/error logs. If the dashboard is not visible right after reinstalling monitoring, wait for the Grafana sidecar refresh or restart Grafana:
+`Coinbase / Streaming and Predictions` reads validated candles from the
+feature-platform PostgreSQL store and refreshes every 10 seconds. It also
+compares each stored prediction with the actual candle received at its target
+time. Choose the symbol at the top and use a time range that contains the
+streamed candle timestamps.
+
+After changing this dashboard or its application storage, rebuild and deploy
+the feature platform and inference orchestrator, then refresh monitoring:
+
+```bash
+IMAGE_TAG=$(git rev-parse --short HEAD) make feature-platform-build feature-platform-push
+IMAGE_TAG=$(git rev-parse --short HEAD) make inference-orchestrator-build inference-orchestrator-push
+make feature-platform-deploy
+make inference-orchestrator-deploy
+make gke-install-monitoring
+PORT=3003 make gke-monitoring-grafana
+```
+
+The Bento dashboard contains available/ready replicas, problem pod count,
+restart trend, recent Bento logs, and warning/error logs. If a dashboard is not
+visible right after reinstalling monitoring, wait for the Grafana sidecar
+refresh or restart Grafana:
 
 ```bash
 kubectl -n monitoring rollout restart deploy/kube-prometheus-stack-grafana

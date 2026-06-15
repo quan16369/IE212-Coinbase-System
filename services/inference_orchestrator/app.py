@@ -15,7 +15,8 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -33,11 +34,23 @@ ALERT_INDEX_PATH = Path(os.environ.get("ALERT_INDEX_PATH", "/data/alerts.jsonl")
 GOVERNANCE_HISTORY_LIMIT = int(os.environ.get("GOVERNANCE_HISTORY_LIMIT", "1000"))
 GOVERNANCE_INDEX_PATH = Path(os.environ.get("GOVERNANCE_INDEX_PATH", "/data/governance_decisions.jsonl"))
 OUTCOME_DB_PATH = Path(os.environ.get("OUTCOME_DB_PATH", "/data/outcomes.db"))
+OBSERVABILITY_POSTGRES_DSN = os.environ.get("OBSERVABILITY_POSTGRES_DSN", "").strip()
 HTTP_TIMEOUT_SECONDS = float(os.environ.get("ORCHESTRATOR_HTTP_TIMEOUT_SECONDS", "30"))
 _alert_lock = Lock()
 _governance_lock = Lock()
 
 app = FastAPI(title="Coinbase Inference Orchestrator", version="0.1.0")
+
+PREDICTED_CLOSE_PRICE = Gauge(
+    "coinbase_predicted_close_price",
+    "Latest predicted close price produced by the inference orchestrator.",
+    ["symbol"],
+)
+PREDICTION_TARGET_TIMESTAMP = Gauge(
+    "coinbase_prediction_target_timestamp_seconds",
+    "Target timestamp of the latest price prediction.",
+    ["symbol"],
+)
 
 
 class Candle(BaseModel):
@@ -104,6 +117,11 @@ def livez() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.get("/config")
 def config() -> dict[str, str]:
     return {
@@ -138,6 +156,16 @@ def predict(payload: PredictRequest) -> dict[str, Any]:
         end_to_end_latency_ms=_elapsed_ms(started_at),
     )
     _store_governance_record(governance_record)
+    _store_prediction(governance_record)
+    prediction_result = prediction.get("prediction", {})
+    predicted_close = prediction_result.get("predicted_close")
+    target_time = prediction_result.get("target_time")
+    if predicted_close is not None:
+        PREDICTED_CLOSE_PRICE.labels(symbol=symbol).set(float(predicted_close))
+    if target_time:
+        PREDICTION_TARGET_TIMESTAMP.labels(symbol=symbol).set(
+            datetime.fromisoformat(str(target_time).replace("Z", "+00:00")).timestamp()
+        )
 
     return {
         "decision_id": governance_record["decision_id"],
@@ -310,6 +338,7 @@ def _build_governance_record(
         "model_family": prediction.get("model_family"),
         "model_version": str(model_version) if model_version is not None else None,
         "decision": {
+            "current_close": result.get("current_close"),
             "predicted_return": result.get("predicted_return"),
             "predicted_close": result.get("predicted_close"),
             "target_time": result.get("target_time"),
@@ -458,7 +487,92 @@ def _outcome_connection() -> sqlite3.Connection:
     return connection
 
 
+def _postgres_connection():
+    import psycopg
+
+    return psycopg.connect(OBSERVABILITY_POSTGRES_DSN, autocommit=True)
+
+
+def _init_postgres_prediction_schema(connection: Any) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS model_predictions (
+              decision_id TEXT PRIMARY KEY,
+              created_at TIMESTAMPTZ NOT NULL,
+              target_time TIMESTAMPTZ NOT NULL,
+              observed_at TIMESTAMPTZ,
+              symbol TEXT NOT NULL,
+              current_close DOUBLE PRECISION NOT NULL,
+              predicted_return DOUBLE PRECISION NOT NULL,
+              predicted_close DOUBLE PRECISION NOT NULL,
+              actual_close DOUBLE PRECISION,
+              absolute_error DOUBLE PRECISION,
+              percentage_error DOUBLE PRECISION
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_model_predictions_symbol_target_time
+            ON model_predictions(symbol, target_time DESC)
+            """
+        )
+
+
+def _store_prediction(record: dict[str, Any]) -> None:
+    if not OBSERVABILITY_POSTGRES_DSN:
+        return
+    decision = record.get("decision", {})
+    required = ("target_time", "current_close", "predicted_return", "predicted_close")
+    if any(decision.get(key) is None for key in required):
+        return
+    with _postgres_connection() as connection:
+        _init_postgres_prediction_schema(connection)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO model_predictions (
+                  decision_id, created_at, target_time, symbol, current_close,
+                  predicted_return, predicted_close
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (decision_id) DO NOTHING
+                """,
+                (
+                    record["decision_id"],
+                    record["captured_at"],
+                    decision["target_time"],
+                    record["symbol"],
+                    decision["current_close"],
+                    decision["predicted_return"],
+                    decision["predicted_close"],
+                ),
+            )
+
+
 def _store_outcome(row: dict[str, Any]) -> None:
+    if OBSERVABILITY_POSTGRES_DSN:
+        with _postgres_connection() as connection:
+            _init_postgres_prediction_schema(connection)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE model_predictions
+                    SET observed_at = %s,
+                        actual_close = %s,
+                        absolute_error = %s,
+                        percentage_error = %s
+                    WHERE decision_id = %s
+                    """,
+                    (
+                        row["observed_at"],
+                        row["actual_close"],
+                        row["absolute_error"],
+                        row["percentage_error"],
+                        row["decision_id"],
+                    ),
+                )
     with _outcome_connection() as connection:
         connection.execute(
             """
@@ -477,6 +591,23 @@ def _store_outcome(row: dict[str, Any]) -> None:
 
 
 def _read_outcomes(limit: int) -> list[dict[str, Any]]:
+    if OBSERVABILITY_POSTGRES_DSN:
+        with _postgres_connection() as connection:
+            _init_postgres_prediction_schema(connection)
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT decision_id, observed_at, symbol, actual_close,
+                           predicted_close, absolute_error, percentage_error
+                    FROM model_predictions
+                    WHERE actual_close IS NOT NULL
+                    ORDER BY observed_at DESC
+                    LIMIT %s
+                    """,
+                    (limit,),
+                )
+                columns = [column.name for column in cursor.description]
+                return [dict(zip(columns, row, strict=True)) for row in cursor.fetchall()]
     with _outcome_connection() as connection:
         rows = connection.execute(
             "SELECT * FROM outcomes ORDER BY observed_at DESC LIMIT ?", (limit,)

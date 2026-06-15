@@ -1,0 +1,18 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "feature-platform.fullname" . }}
+  namespace: {{ .Values.namespace | default .Release.Namespace }}
+  labels:
+    {{- include "feature-platform.labels" . | nindent 4 }}
+    release: {{ .Values.monitoring.release | quote }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "feature-platform.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.monitoring.interval }}
+{{- end }}

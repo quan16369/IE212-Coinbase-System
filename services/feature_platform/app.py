@@ -11,7 +11,8 @@ from threading import Lock
 from typing import Any, Deque, Protocol
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
+from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from pydantic import BaseModel, Field, model_validator
 
 from contracts.events import CandleEvent, CandlePayload, EVENT_TYPE_CANDLE, SCHEMA_VERSION
@@ -148,6 +149,22 @@ DRIFT_VOLUME_DELTA_RATIO_THRESHOLD = float(os.environ.get("FEATURE_DRIFT_VOLUME_
 app = FastAPI(title="Coinbase Feature Platform", version="0.2.0")
 store: FeatureStore
 
+STREAMING_CLOSE_PRICE = Gauge(
+    "coinbase_streaming_close_price",
+    "Latest accepted Coinbase candle close price.",
+    ["symbol"],
+)
+STREAMING_VOLUME = Gauge(
+    "coinbase_streaming_volume",
+    "Latest accepted Coinbase candle volume.",
+    ["symbol"],
+)
+STREAMING_EVENT_TIMESTAMP = Gauge(
+    "coinbase_streaming_event_timestamp_seconds",
+    "Timestamp of the latest accepted Coinbase candle.",
+    ["symbol"],
+)
+
 
 @app.on_event("startup")
 def startup() -> None:
@@ -156,6 +173,10 @@ def startup() -> None:
         store = _connect_redis_postgres_with_retry()
     else:
         store = MemoryFeatureStore()
+    for symbol in ("BTC-USD", "ETH-USD", "XRP-USD"):
+        feature = store.latest(symbol)
+        if feature is not None:
+            _update_streaming_metrics(feature)
 
 
 @app.get("/readyz")
@@ -169,6 +190,11 @@ def readyz() -> dict[str, Any]:
 @app.get("/livez")
 def livez() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> Response:
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/store/status", response_model=StoreStatus)
@@ -224,6 +250,7 @@ def ingest(payload: IngestRequest) -> IngestResponse:
         )
 
         store.save_feature(batch_id, feature)
+        _update_streaming_metrics(feature)
         latest[record.symbol] = feature
         accepted_event_ids.append(event.event_id)
 
@@ -239,6 +266,12 @@ def ingest(payload: IngestRequest) -> IngestResponse:
         data_version=data_version,
         latest=latest,
     )
+
+
+def _update_streaming_metrics(record: FeatureRecord) -> None:
+    STREAMING_CLOSE_PRICE.labels(symbol=record.symbol).set(record.close)
+    STREAMING_VOLUME.labels(symbol=record.symbol).set(record.volume)
+    STREAMING_EVENT_TIMESTAMP.labels(symbol=record.symbol).set(record.timestamp.timestamp())
 
 
 @app.get("/features/latest/{symbol}", response_model=FeatureRecord)
@@ -473,6 +506,29 @@ class RedisPostgresFeatureStore:
             cursor.execute(
                 "CREATE INDEX IF NOT EXISTS idx_feature_records_symbol_timestamp ON feature_records(symbol, timestamp DESC)"
             )
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS model_predictions (
+                  decision_id TEXT PRIMARY KEY,
+                  created_at TIMESTAMPTZ NOT NULL,
+                  target_time TIMESTAMPTZ NOT NULL,
+                  observed_at TIMESTAMPTZ,
+                  symbol TEXT NOT NULL,
+                  current_close DOUBLE PRECISION NOT NULL,
+                  predicted_return DOUBLE PRECISION NOT NULL,
+                  predicted_close DOUBLE PRECISION NOT NULL,
+                  actual_close DOUBLE PRECISION,
+                  absolute_error DOUBLE PRECISION,
+                  percentage_error DOUBLE PRECISION
+                )
+                """
+            )
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_model_predictions_symbol_target_time
+                ON model_predictions(symbol, target_time DESC)
+                """
+            )
 
     def save_batch(self, batch_id: str, payload_hash: str, source: str, data_version: str) -> None:
         with self.pg.cursor() as cursor:
@@ -498,6 +554,27 @@ class RedisPostgresFeatureStore:
                   created_at = now()
                 """,
                 (batch_id, record.timestamp, record.symbol, json.dumps(payload)),
+            )
+            cursor.execute(
+                """
+                UPDATE model_predictions
+                SET observed_at = %s,
+                    actual_close = %s,
+                    absolute_error = abs(%s - predicted_close),
+                    percentage_error = abs(%s - predicted_close) / NULLIF(%s, 0)
+                WHERE symbol = %s
+                  AND target_time = %s
+                  AND actual_close IS NULL
+                """,
+                (
+                    record.timestamp,
+                    record.close,
+                    record.close,
+                    record.close,
+                    record.close,
+                    record.symbol,
+                    record.timestamp,
+                ),
             )
         self.redis.set(_latest_key(record.symbol), json.dumps(payload))
 

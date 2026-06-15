@@ -23,6 +23,20 @@ grafana:
       access: proxy
       url: http://tempo.tracing.svc.cluster.local:3200
       isDefault: false
+    - name: Coinbase PostgreSQL
+      uid: coinbase-postgres
+      type: postgres
+      access: proxy
+      url: feature-platform-postgres.feature-platform.svc.cluster.local:5432
+      database: feature_store
+      user: feature_user
+      isDefault: false
+      jsonData:
+        sslmode: disable
+        postgresVersion: 1600
+        timescaledb: false
+      secureJsonData:
+        password: feature_password
 
 prometheus:
   prometheusSpec:

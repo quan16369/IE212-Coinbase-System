@@ -10,6 +10,11 @@ service:
   type: ClusterIP
   port: 80
 
+monitoring:
+  enabled: true
+  release: kube-prometheus-stack
+  interval: 15s
+
 kafkaWorker:
   enabled: true
   bootstrapServers: streaming-platform-kafka.data-streaming.svc.cluster.local:9092
