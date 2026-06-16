@@ -23,13 +23,6 @@ if [[ "${PULL_IMAGES:-true}" == "true" ]]; then
   docker compose --env-file "$ENV_FILE" pull --ignore-pull-failures
 fi
 
-echo "Applying Cassandra migrations if Cassandra is already running"
-if docker compose --env-file "$ENV_FILE" ps cassandra --status running >/tmp/coinbase_streaming_cassandra_ps.txt 2>/dev/null; then
-  if grep -q cassandra /tmp/coinbase_streaming_cassandra_ps.txt; then
-    bash scripts/apply_cassandra_migrations.sh || true
-  fi
-fi
-
 echo "Starting services"
 docker compose --env-file "$ENV_FILE" up -d --build --remove-orphans
 

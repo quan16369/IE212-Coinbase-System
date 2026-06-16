@@ -472,7 +472,7 @@ Use this checklist to keep the project focused on the MLOps path. Do not add the
 - [ ] Do not install ELK yet.
 - [ ] Do not install Airflow yet.
 - [ ] Do not install Trino, Hive, or Delta Lake yet.
-- [ ] Do not run Kafka and Cassandra full stack on GKE yet.
+- [ ] Do not run a multi-broker Kafka production cluster on GKE yet.
 - [ ] Do not use GPU.
 - [ ] Do not expose public LoadBalancers until they are needed.
 - [ ] Do not run the GKE cluster 24/7 during the free trial unless you are actively using it.

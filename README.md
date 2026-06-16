@@ -2,6 +2,12 @@
 
 ## Project Overview
 
+This project is a production-oriented Coinbase streaming and MLOps pipeline.
+The current GKE path uses Terraform for cloud infrastructure, Helm for
+application deployment, Kafka for streaming, FastAPI services for validation,
+feature serving, and inference orchestration, MLflow/BentoML for model
+management and serving, and Grafana/Prometheus/Loki for observability.
+
 ## Screenshot
 
 ![plot](https://i.imgur.com/arNNfss.png)
@@ -9,24 +15,32 @@
 
 ![{AD7AE35E-EC1F-4F9B-8EF1-8655E2C71E7F} png](https://github.com/user-attachments/assets/4a08a193-8f50-4d1f-a1b4-93fc904ea557)
 
-The real-time data pipeline project facilitates the collection, processing, storage, and visualization of cryptocurrency market data from Coinbase. It comprises key components:
+The real-time data pipeline project facilitates the collection, processing,
+storage, forecasting, and visualization of cryptocurrency market data from
+Coinbase. The current architecture is organized around these components:
 
-- **Coinbase WebSocket API**: This serves as the initial data source, providing real-time cryptocurrency market data streams, including trades and price changes.
+- **Coinbase WebSocket producer**: streams market data into Kafka.
 
-- **Kafka Producer**: To efficiently manage data, a Python-based microservice functions as a Kafka producer. It collects data from the Coinbase WebSocket API and sends it to the Kafka broker.
+- **Kafka on GKE**: buffers raw, validated, quality, and model-ready data topics.
 
-- **Kafka Broker**: Kafka, an open-source distributed event streaming platform, forms the core of the data pipeline. It efficiently handles high-throughput, fault-tolerant, real-time data streams, receiving data from the producer and making it available for further processing.
+- **Raw data sink and replay**: persists raw streaming data and supports replay
+  into Kafka when recovery is needed.
 
-- **Go Kafka Consumer**: Implemented in Go, the Kafka consumer pulls raw data from Kafka topics and stores them directly into HDFS (Hadoop Distributed File System). This step ensures robust and scalable storage of raw data.
-- **AWS S3 (MinIO) for Raw Data Storage**: 
+- **Data validation service**: validates event schema, ordering, and null/range
+  constraints before routing valid and invalid records.
 
-- **PySpark Structured Streaming for Data Processing**: Apache Spark, a powerful in-memory data processing framework, is chosen for real-time data processing. With Spark Structured Streaming, real-time transformations and computations are applied to incoming data streams, ensuring data is ready for storage.
+- **Feature platform**: stores online features in Redis and offline features in
+  PostgreSQL, with idempotency checks using event IDs and Kafka offsets.
 
-- **Cassandra Database**:  
-For long-term data storage, Apache Cassandra, a highly scalable NoSQL database known for its exceptional write and read performance, is employed. Cassandra serves as the solution for storing historical cryptocurrency market data. 
-The streaming tables can feed downstream forecasting experiments and serving workflows.
+- **Model training and validation**: trains the forecasting model, logs metadata
+  to MLflow, and validates promotion gates before serving.
 
-- **Grafana for Data Visualization**: To make data easily understandable, Grafana, an open-source platform for monitoring and observability, is utilized. Grafana queries data from Cassandra to create compelling real-time visualizations, providing insights into cryptocurrency market trends.
+- **BentoML predictor and inference orchestrator**: serves predictions, stores
+  decision-bound governance telemetry, evaluates simple alert rules, and exposes
+  Prometheus metrics.
+
+- **Observability**: Grafana dashboards show live streaming prices, predictions,
+  workload health, logs, and alert status.
 
 ## Deployment
 <!--
@@ -38,17 +52,20 @@ The streaming tables can feed downstream forecasting experiments and serving wor
   <img src="https://i.imgur.com/LU2iYUF.png" style="width: 600px"/>
 </p>
 
-Install Docker Desktop. After that, run: docker-compose up -d
+For the local Compose stack:
+
+```bash
+docker compose --env-file .env up -d
+```
 
 For Jenkins CI/CD, monitoring, logs, migrations, and backup/restore, see [OPERATIONS.md](OPERATIONS.md).
 For the CPU ML model, MLflow tracking, and BentoML serving path, see [MLOPS.md](MLOPS.md).
 For repository layout and deployment ownership boundaries, see [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Future Work
-* Perform code cleanup and integration testing
-* Deploy to EKS
-* Add monitoring and logging tools
-* Perform more comprehensive analysis (like forecasting or sliding window avg)
-* Improve model performance further
+* Move the current GKE development cluster from Autopilot to a tuned Standard cluster when cost and node-level control matter.
+* Add stronger end-to-end tests around Kafka replay, model promotion, and rollback.
+* Improve model quality and add richer multi-symbol prediction panels.
+* Replace demo secrets with a managed secret workflow for non-local environments.
 
 ## [Demo](https://drive.google.com/file/d/1HRBCcF42rRFbDxIWq7ECk3Xm1ykzOiP_/view?usp=sharing)
 

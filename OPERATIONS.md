@@ -2488,34 +2488,9 @@ The `ops` Compose profile starts:
 
 Alert rules live in `ops/observability/monitoring/prometheus/alerts.yml`. Alertmanager currently uses a local no-op receiver so alerts are visible in the UI but not sent externally. Add Slack, email, or webhook receivers in `ops/observability/monitoring/alertmanager/alertmanager.yml` when you have a destination.
 
-## Cassandra migrations
-
-Schema migrations live in `ops/cassandra/migrations`.
-
-Apply them manually:
-
-```bash
-bash scripts/apply_cassandra_migrations.sh
-```
-
-Compose also includes a `cassandra-migrate` service that runs the current `.cql` migrations after Cassandra becomes healthy. New schema changes should go into versioned `.cql` files.
-
-## Backup and restore
-
-Create a Cassandra snapshot archive:
-
-```bash
-bash scripts/backup_cassandra.sh
-```
-
-Restore from an archive:
-
-```bash
-bash scripts/restore_cassandra.sh backups/cassandra/<snapshot>.tar.gz
-```
-
-The restore script performs a cold restore by stopping Cassandra, unpacking the archive into the Cassandra volume, then starting Cassandra. Validate the database and logs before accepting traffic.
-
 ## Current limits
 
-This is still a single-host Docker Compose ops setup. It improves CI/CD, config hygiene, monitoring, logs, and backup basics, but it is not HA. For real production, the next step is Kubernetes or managed services for Kafka, Cassandra, object storage, secrets, and alert delivery.
+The active production-style path is GKE plus Helm. Local Docker Compose is kept
+for developer support services such as Jenkins, SonarQube, MLflow, Airflow, and
+observability experiments. For real production, the next step is managed or
+highly available Kafka/object storage/secrets and external alert delivery.

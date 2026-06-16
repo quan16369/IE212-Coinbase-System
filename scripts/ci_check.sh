@@ -27,9 +27,7 @@ fi
 if [[ -n "$PYTHON_BIN" ]]; then
   echo "Checking Python syntax"
   "$PYTHON_BIN" -c "import ast, pathlib; files = [
-    'coinbase_kafka_producer/producer.py',
     'contracts/events.py',
-    'kafka_spark_processor/spark_processor.py',
     'mlops/features.py',
     'mlops/service.py',
     'mlops/train.py',
@@ -37,6 +35,7 @@ if [[ -n "$PYTHON_BIN" ]]; then
     'services/feature_platform/app.py',
     'services/inference_orchestrator/app.py',
     'services/raw_data_sink/sink.py',
+    'services/telemetry_producer/producer.py',
     'scripts/promote_mlflow_model.py',
     'scripts/smoke_feature_platform.py',
     'scripts/smoke_data_validation.py',
@@ -45,15 +44,6 @@ if [[ -n "$PYTHON_BIN" ]]; then
 ]; [ast.parse(pathlib.Path(path).read_text(), filename=path) for path in files]"
 else
   echo "python not found; skipping Python syntax check"
-fi
-
-if command -v go >/dev/null 2>&1; then
-  echo "Running Go tests"
-  pushd go_kafka_consumer >/dev/null
-  go test ./...
-  popd >/dev/null
-else
-  echo "go not found; skipping Go tests"
 fi
 
 if command -v helm >/dev/null 2>&1; then
